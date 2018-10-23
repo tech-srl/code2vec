@@ -1,0 +1,7 @@
+d a,4,a b,4,b c,4,c d,4,d
+a q,q,q b,1,b c,X,c a,1,a
+c c,3,c b,3,b d,3,d a,3,a
+b d,2,c b,2,b c,2,c c,2,a
+a q,q,q q,q,q q,q,q q,q,q
+b b,2,b q,q,q a,2,a d,2,a
+t x,2,x x,2,x x,2,x x,2,x
