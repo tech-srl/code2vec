@@ -168,11 +168,11 @@ In order to export embeddings from a trained model, use the "--save_w2v" and "--
 
 Exporting the trained *token* embeddings:
 ```
-python3 code2vec.py --load models/java14_model/saved_model_iter3 --save_w2v models/java14_model/tokens.txt
+python3 code2vec.py --load models/java14_model/saved_model_iter8 --save_w2v models/java14_model/tokens.txt
 ```
 Exporting the trained *target* (method name) embeddings:
 ```
-python3 code2vec.py --load models/java14_model/saved_model_iter3 --save_t2v models/java14_model/targets.txt
+python3 code2vec.py --load models/java14_model/saved_model_iter8 --save_t2v models/java14_model/targets.txt
 ```
 This saves the tokens/targets embedding matrices in word2vec format to the specified text file, in which:
 the first line is: \<vocab_size\> \<dimension\>
