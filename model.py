@@ -426,7 +426,7 @@ class Model:
             print('Done')
 
     def save_word2vec_format(self, dest, source):
-        with tf.variable_scope('model', reuse=True):
+        with tf.variable_scope('model', reuse=None):
             if source is VocabType.Token:
                 vocab_size = self.word_vocab_size
                 embedding_size = self.config.EMBEDDINGS_SIZE
