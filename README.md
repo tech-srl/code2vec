@@ -83,7 +83,7 @@ This trained model is in a "released" state, which means that we stripped it fro
 To train a model from scratch:
   * Edit the file [train.sh](train.sh) to point it to the right preprocessed data. By default, 
   it points to our "java14m" dataset that was preprocessed in the previous step.
-  * Before training, you can edit the configuration hyper-parameters in the file [config.py](config.py),
+  * Before training, you can edit the configuration hyper-parameters in the file [common.py](common.py),
   as explained in [Configuration](#configuration).
   * Run the [train.sh](train.sh) script:
 ```
@@ -94,7 +94,7 @@ source train.sh
   1. By default, the network is evaluated on the validation set after every training epoch.
   2. The newest 10 versions are kept (older are deleted automatically). This can be changed, but will be more space consuming.
   3. By default, the network is training for 20 epochs.
-These settings can be changed by simply editing the file [config.py](config.py).
+These settings can be changed by simply editing the file [common.py](common.py).
 Training on a Tesla v100 GPU takes about 50 minutes per epoch. 
 Training on Tesla K80 takes about 4 hours per epoch.
 
@@ -116,7 +116,8 @@ After the model loads, follow the instructions and edit the file Input.java and 
 method or code snippet, and examine the model's predictions and attention scores.
 
 ## Configuration
-Changing hyper-parameters is possible by editing the file [config.py](config.py).
+Changing hyper-parameters is possible by editing the file [common.py](common
+.py).
 
 Here are some of the parameters and their description:
 #### config.NUM_EPOCHS = 20
@@ -184,10 +185,11 @@ python3
 >>> from gensim.models import KeyedVectors as word2vec
 >>> vectors_text_path = 'models/java14m/targets.txt' # or: `models/java14m/tokens.txt'
 >>> model = word2vec.load_word2vec_format(vectors_text_path, binary=False)
->>> model.most_similar(positive=['equals', 'to|lower'])
+>>> model.most_similar(positive=['equals', 'to|lower']) # or: 'tolower', if using the downloaded embeddings
+>>> model.most_similar(positive=['download', 'send'], negative=['receive'])
 ```
 The above python commands will result in the closest name to both "equals" and "to|lower", which is "equals|ignore|case".
-Note: the input token and target words are saved using the symbol "|" as a subtokens delimiter ("*toLower*" is saved as: "*to|lower*").
+Note: In embeddings that were exported manually using the "--save_w2v" or "--save_t2v" flags, the input token and target words are saved using the symbol "|" as a subtokens delimiter ("*toLower*" is saved as: "*to|lower*"). In the embeddings that are available to download (which are the same as in the paper), the "|" symbol is not used, thus "*toLower*" is saved as "*tolower*".
 
 ## Extending to other languages  
 In order to extend code2vec to work with other languages other than Java, a new extractor (similar to the [JavaExtractor](JavaExtractor))
