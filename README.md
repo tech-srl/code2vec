@@ -73,7 +73,7 @@ The number of epochs was chosen using [early stopping](https://en.wikipedia.org/
 ```
 wget https://s3.amazonaws.com/code2vec/model/java14m_model.tar.gz
 mkdir -p models/java14m/
-tar -xvzf java14m_model.tar.gz -C models/java14m/
+tar -xvzf java14m_model.tar.gz
 ```
 
 ##### Note:
