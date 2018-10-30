@@ -72,12 +72,11 @@ We already trained a model for 8 epochs on the data that was preprocessed in the
 The number of epochs was chosen using [early stopping](https://en.wikipedia.org/wiki/Early_stopping), as the version that maximized the F1 score on the validation set.
 ```
 wget https://s3.amazonaws.com/code2vec/model/java14m_model.tar.gz
-mkdir -p models/java14m/
 tar -xvzf java14m_model.tar.gz
 ```
 
 ##### Note:
-This trained model is in a "released" state, which means that we stripped it from its training parameters and can thus be used for inference, but cannot be further trained. If you use this trained model in the next steps, use 'saved_model_iter8.release' instead of 'saved_model_iter8' in every command line example that loads the model such as: '--load models/java14m/saved_model_iter8'. To read how to release a model, see [Releasing the model](#releasing-the-model).
+This trained model is in a "released" state, which means that we stripped it from its training parameters and can thus be used for inference, but cannot be further trained. If you use this trained model in the next steps, use 'saved_model_iter8.release' instead of 'saved_model_iter8' in every command line example that loads the model such as: '--load models/java14_model/saved_model_iter8'. To read how to release a model, see [Releasing the model](#releasing-the-model).
 
 #### Training a model from scratch
 To train a model from scratch:
@@ -103,14 +102,14 @@ Once the score on the validation set stops improving over time, you can stop the
 and pick the iteration that performed the best on the validation set.
 Suppose that iteration #8 is our chosen model, run:
 ```
-python3 code2vec.py --load models/java14m/saved_model_iter8 --test data/java14m/java14m.test.c2v
+python3 code2vec.py --load models/java14_model/saved_model_iter8 --test data/java14m/java14m.test.c2v
 ```
 While evaluating, a file named "log.txt" is written with each test example name and the model's prediction.
 
 ### Step 4: Manual examination of a trained model
 To manually examine a trained model, run:
 ```
-python3 code2vec.py --load models/java14m/saved_model_iter8 --predict
+python3 code2vec.py --load models/java14_model/saved_model_iter8 --predict
 ```
 After the model loads, follow the instructions and edit the file Input.java and enter a Java 
 method or code snippet, and examine the model's predictions and attention scores.
@@ -156,7 +155,7 @@ Code2vec supports the following features:
 If you wish to keep a trained model for inference only (without the ability to continue training it) you can
 release the model using:
 ```
-python3 code2vec.py --load models/java14m/saved_model_iter8 --release
+python3 code2vec.py --load models/java14_model/saved_model_iter8 --release
 ```
 This will save a copy of the trained model with the '.release' suffix.
 A "released" model usually takes 3x less disk space.
@@ -169,11 +168,11 @@ In order to export embeddings from a trained model, use the "--save_w2v" and "--
 
 Exporting the trained *token* embeddings:
 ```
-python3 code2vec.py --load models/java14m/saved_model_iter3 --save_w2v models/java14m/tokens.txt
+python3 code2vec.py --load models/java14_model/saved_model_iter3 --save_w2v models/java14_model/tokens.txt
 ```
 Exporting the trained *target* (method name) embeddings:
 ```
-python3 code2vec.py --load models/java14m/saved_model_iter3 --save_t2v models/java14m/targets.txt
+python3 code2vec.py --load models/java14_model/saved_model_iter3 --save_t2v models/java14_model/targets.txt
 ```
 This saves the tokens/targets embedding matrices in word2vec format to the specified text file, in which:
 the first line is: \<vocab_size\> \<dimension\>
@@ -183,7 +182,7 @@ These word2vec files can be manually parsed or easily loaded and inspected using
 ```python
 python3
 >>> from gensim.models import KeyedVectors as word2vec
->>> vectors_text_path = 'models/java14m/targets.txt' # or: `models/java14m/tokens.txt'
+>>> vectors_text_path = 'models/java14_model/targets.txt' # or: `models/java14_model/tokens.txt'
 >>> model = word2vec.load_word2vec_format(vectors_text_path, binary=False)
 >>> model.most_similar(positive=['equals', 'to|lower']) # or: 'tolower', if using the downloaded embeddings
 >>> model.most_similar(positive=['download', 'send'], negative=['receive'])
