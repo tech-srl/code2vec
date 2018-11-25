@@ -13,7 +13,7 @@ An **online demo** is available at [https://code2vec.org/](https://code2vec.org/
 This is a TensorFlow implementation, designed to be easy and useful in research, 
 and for experimenting with new ideas in machine learning for code tasks.
 By default, it learns Java source code and predicts Java method names, but it can be easily extended to other languages, 
-since the TensorFlow network is agnostic to the input programming language (see [Extending to other languages](#extending)).
+since the TensorFlow network is agnostic to the input programming language (see [Extending to other languages](#extending-to-other-languages).
 Contributions are welcome.
 
 <center style="padding: 40px"><img width="70%" src="https://github.com/tech-srl/code2vec/raw/master/images/network.png" /></center>
