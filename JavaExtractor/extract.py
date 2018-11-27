@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import itertools
 import multiprocessing
 import os
 import sys
@@ -19,8 +20,8 @@ def get_immediate_subdirectories(a_dir):
 
 TMP_DIR = ""
 
-def ParallelExtractDir(dir):
-    ExtractFeaturesForDir(dir, "")
+def ParallelExtractDir(args, dir):
+    ExtractFeaturesForDir(args, dir, "")
 
 
 def ExtractFeaturesForDir(args, dir, prefix):
@@ -64,10 +65,10 @@ def ExtractFeaturesForDirsList(args, dirs):
         shutil.rmtree(TMP_DIR, ignore_errors=True)
     os.makedirs(TMP_DIR)
     try:
-        # p = multiprocessing.Pool(4)
-        # p.map(ParallelExtractDir, dirs)
-        for dir in dirs:
-            ExtractFeaturesForDir(args, dir, '')
+        p = multiprocessing.Pool(4)
+        p.starmap(ParallelExtractDir, zip(itertools.repeat(args), dirs))
+        #for dir in dirs:
+        #    ExtractFeaturesForDir(args, dir, '')
         output_files = os.listdir(TMP_DIR)
         for f in output_files:
             os.system("cat %s/%s" % (TMP_DIR, f))
