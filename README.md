@@ -25,6 +25,7 @@ Table of Contents
   * [Configuration](#configuration)
   * [Features](#features)
   * [Extending to other languages](#extending-to-other-languages)
+  * [Additional datasets](#additional-datasets)
   * [Citation](#citation)
 
 ## Requirements
@@ -50,7 +51,7 @@ cd code2vec
 In order to have a preprocessed dataset to train a network on, you can either download our
 preprocessed dataset, or create a new dataset of your own.
 
-#### Download our preprocessed dataset of ~14M examples (compressed: 6.3G, extracted 32G)
+#### Download our preprocessed dataset of ~14M examples (compressed: 6.3GB, extracted 32GB)
 ```
 wget https://s3.amazonaws.com/code2vec/data/java14m_data.tar.gz
 tar -xvzf java14m_data.tar.gz
@@ -212,6 +213,33 @@ Might be (in a new context extraction algorithm, which is different than ours si
 Consider the first example context "System,FIELD_ACCESS,out". 
 In the current implementation, the 1st ("System") and 3rd ("out") components of a context are taken from the same "tokens" vocabulary, 
 and the 2nd component ("FIELD_ACCESS") is taken from a separate "paths" vocabulary. 
+
+## Additional datasets
+We preprocessed additional three datasets used by the [code2seq](https://arxiv.org/pdf/1808.01400) paper, using the code2vec preprocessing.
+These datasets are available in raw format (i.e., .java files) at [http://urialon.cswp.cs.technion.ac.il/publications/](http://urialon.cswp.cs.technion.ac.il/publications/),
+and are also available to download in a preprocessed format (i.e., ready to train a code2vec model on) here:
+
+### Java-small (compressed: 366MB, extracted 1.9GB)
+```
+wget https://s3.amazonaws.com/code2vec/data/java-small_data.tar.gz
+```
+This dataset is based on the dataset of [Allamanis et al. (ICML'2016)](http://groups.inf.ed.ac.uk/cup/codeattention/), with the difference that training/validation/test are split by-project rather than by-file.
+This dataset contains 9 Java projects for training, 1 for validation and 1 testing. Overall, it contains about 700K examples.
+
+### Java-med (compressed: 1.8GB, extracted 9.3GB)
+```
+wget https://s3.amazonaws.com/code2vec/data/java-med_data.tar.gz
+```
+A dataset of the 1000 top-starred Java projects from GitHub. It contains
+800 projects for training, 100 for validation and 100 for testing. Overall, it contains about 4M examples.
+
+### Java-large (compressed: 7.2GB, extracted 37GB)
+```
+wget https://s3.amazonaws.com/code2vec/data/java-large_data.tar.gz
+```
+A dataset of the 9500 top-starred Java projects from GitHub that were created
+since January 2007. It contains 9000 projects for training, 200 for validation and 300 for
+testing. Overall, it contains about 16M examples.
 
 ## Citation
 
