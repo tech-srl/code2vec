@@ -94,7 +94,7 @@ if __name__ == '__main__':
         subdirs = get_immediate_subdirectories(args.dir)
         to_extract = subdirs
         if len(subdirs) == 0:
-            to_extract = [sys.argv[2]]
+            to_extract = [args.dir]
         ExtractFeaturesForDirsList(args, to_extract)
 
 
