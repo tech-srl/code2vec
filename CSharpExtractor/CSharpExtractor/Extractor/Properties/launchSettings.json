@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Extractor": {
+      "commandName": "Project",
+      "commandLineArgs": "--path C:\\Users\\urial\\Source\\Repos\\CSharpExtractor\\CSharpExtractor\\Extractor\\bin\\ --no_hash"
+    }
+  }
+}
