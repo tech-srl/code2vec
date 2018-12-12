@@ -258,11 +258,11 @@ class Model:
                                                                                                      mode='FAN_OUT',
                                                                                                      uniform=True))
 
-            weighted_average_contexts, _ = self.calculate_weighted_contexts(words_vocab, paths_vocab, attention_param,
+            code_vectors, _ = self.calculate_weighted_contexts(words_vocab, paths_vocab, attention_param,
                                                                             source_input, path_input, target_input,
                                                                             valid_mask)
 
-            logits = tf.matmul(weighted_average_contexts, target_words_vocab, transpose_b=True)
+            logits = tf.matmul(code_vectors, target_words_vocab, transpose_b=True)
             batch_size = tf.to_float(tf.shape(words_input)[0])
             loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=tf.reshape(words_input, [-1]),
@@ -302,10 +302,10 @@ class Model:
         attention_weights = tf.nn.softmax(batched_contexts_weights, axis=1)  # (batch, max_contexts, 1)
 
         batched_embed = tf.reshape(flat_embed, shape=[-1, max_contexts, self.config.EMBEDDINGS_SIZE * 3])
-        weighted_average_contexts = tf.reduce_sum(tf.multiply(batched_embed, attention_weights),
+        code_vectors = tf.reduce_sum(tf.multiply(batched_embed, attention_weights),
                                                   axis=1)  # (batch, dim * 3)
 
-        return weighted_average_contexts, attention_weights
+        return code_vectors, attention_weights
 
     def build_test_graph(self, input_tensors, normalize_scores=False):
         with tf.variable_scope('model', reuse=self.get_should_reuse_variables()):
@@ -322,19 +322,19 @@ class Model:
                                           shape=(self.path_vocab_size + 1, self.config.EMBEDDINGS_SIZE),
                                           dtype=tf.float32, trainable=False)
 
-            target_words_vocab = tf.transpose(target_words_vocab)  # (dim, word_vocab+1)
+            target_words_vocab = tf.transpose(target_words_vocab)  # (dim * 3, target_word_vocab+1)
 
             words_input, source_input, path_input, target_input, valid_mask, source_string, path_string, path_target_string = input_tensors  # (batch, 1), (batch, max_contexts)
 
-            weighted_average_contexts, attention_weights = self.calculate_weighted_contexts(words_vocab, paths_vocab,
+            code_vectors, attention_weights = self.calculate_weighted_contexts(words_vocab, paths_vocab,
                                                                                             attention_param,
                                                                                             source_input, path_input,
                                                                                             target_input,
                                                                                             valid_mask, True)
 
-        cos = tf.matmul(weighted_average_contexts, target_words_vocab)
+        scores = tf.matmul(code_vectors, target_words_vocab) # (batch, target_word_vocab+1)
 
-        topk_candidates = tf.nn.top_k(cos, k=tf.minimum(self.topk, self.target_word_vocab_size))
+        topk_candidates = tf.nn.top_k(scores, k=tf.minimum(self.topk, self.target_word_vocab_size))
         top_indices = tf.to_int64(topk_candidates.indices)
         top_words = self.index_to_target_word_table.lookup(top_indices)
         original_words = words_input

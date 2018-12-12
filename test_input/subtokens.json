@@ -1,5 +1,0 @@
-{"token":"a","subtokens":["a","b"]}
-{"token":"b","subtokens":["b","c"]}
-{"token":"c","subtokens":["c", "d"]}
-{"token":"t","subtokens":["d", "t"]}
-{"token":"d","subtokens":["d","e"]}
