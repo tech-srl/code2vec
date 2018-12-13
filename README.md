@@ -3,7 +3,7 @@ A neural network for learning distributed representations of code.
 This is an official implemention of the model described in:
 
 [Uri Alon](http://urialon.cswp.cs.technion.ac.il), [Meital Zilberstein](http://www.cs.technion.ac.il/~mbs/), [Omer Levy](https://levyomer.wordpress.com) and [Eran Yahav](http://www.cs.technion.ac.il/~yahave/),
-"code2vec: Learning Distributed Representations of Code", 2018 
+"code2vec: Learning Distributed Representations of Code", POPL'2019 
 https://arxiv.org/pdf/1803.09473
 
 _**October 2018** - the paper was accepted to [POPL'2019](https://popl19.sigplan.org)_!
