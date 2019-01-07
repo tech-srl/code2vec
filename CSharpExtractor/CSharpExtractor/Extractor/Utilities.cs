@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 
 namespace Extractor
@@ -21,11 +22,17 @@ namespace Extractor
         [Option('l', "max_width", Default = 2, HelpText = "Max path length")]
         public int MaxWidth { get; set; }
 
+        [Option('o', "ofile_name", Default = "test.txt", HelpText = "Output file name")]
+        public String OFileName { get; set; }
+
         [Option('h', "no_hash", Default = false, HelpText = "When enabled, prints the whole path strings (not hashed)")]
         public Boolean NoHash { get; set; }
+
+        [Option('l', "max_contexts", Default = 30000, HelpText = "Max number of path contexts to sample. Affects only very large snippets")]
+        public int MaxContexts { get; set; }
     }
 
-    public class Utilities
+    public static class Utilities
 	{
 	    public static String[] NumbericLiteralsToKeep = new String[] { "0", "1", "2", "3", "4", "5", "10" };
         public static IEnumerable<Tuple<T, T>> Choose2<T>(IEnumerable<T> enumerable)
@@ -40,7 +47,41 @@ namespace Extractor
 			}
 		}
 
-		public static IEnumerable<T> WeakConcat<T>(IEnumerable<T> enumerable1, IEnumerable<T> enumerable2)
+        /// <summary>
+        /// Sample uniform randomly numSamples from an enumerable, using reservoir sampling.
+        /// See https://en.wikipedia.org/wiki/Reservoir_sampling
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="input"></param>
+        /// <param name="numSamples"></param>
+        /// <returns></returns>
+        public static IEnumerable<TSource> ReservoirSample<TSource>(this IEnumerable<TSource> input, int numSamples)
+        {
+            var rng = new Random();
+            var sampledElements = new List<TSource>(numSamples);
+            int seenElementCount = 0;
+            foreach (var element in input)
+            {
+                seenElementCount++;
+                if (sampledElements.Count < numSamples)
+                {
+                    sampledElements.Add(element);
+                }
+                else
+                {
+                    int position = rng.Next(seenElementCount);
+                    if (position < numSamples)
+                    {
+                        sampledElements[position] = element;
+                    }
+                }
+            }
+            Debug.Assert(sampledElements.Count <= numSamples);
+            return sampledElements;
+        }
+
+
+        public static IEnumerable<T> WeakConcat<T>(IEnumerable<T> enumerable1, IEnumerable<T> enumerable2)
 		{
 			foreach (T t in enumerable1)
 				yield return t;
