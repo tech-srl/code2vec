@@ -44,9 +44,11 @@ namespace Extractor
 
             results = files.AsParallel().WithDegreeOfParallelism(options.Threads).SelectMany(filename => ExtractSingleFile(filename, options));
 
+            //create one file per job, write first time, append all following times
+            StreamWriter sw = new StreamWriter(options.OFileName, append: true);
             foreach (var res in results)
             {
-                Console.WriteLine(res);
+                sw.WriteLine(res);
             }
         }
     }
