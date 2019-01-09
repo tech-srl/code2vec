@@ -33,30 +33,24 @@ def ExtractFeaturesForDir(args, dir, prefix):
     # print command
     # os.system(command)
     kill = lambda process: process.kill()
-    outputFileName = TMP_DIR + prefix + dir.split('/')[-1]
-    failed = False
-    with open(outputFileName, 'a') as outputFile:
-        sleeper = subprocess.Popen(command, stdout=outputFile, stderr=subprocess.PIPE)
-        timer = Timer(600000, kill, [sleeper])
+    sleeper = subprocess.Popen(command, stderr=subprocess.PIPE)
+    timer = Timer(600000, kill, [sleeper])
 
-        try:
-            timer.start()
-            stdout, stderr = sleeper.communicate()
-        finally:
-            timer.cancel()
+    try:
+        timer.start()
+        _, stderr = sleeper.communicate()
+    finally:
+        timer.cancel()
 
-        if sleeper.poll() == 0:
-            if len(stderr) > 0:
-                print(sys.stderr, stderr, file=sys.stdout)
-        else:
-            print(sys.stderr, 'dir: ' + str(dir) + ' was not completed in time', file=sys.stdout)
-            failed = True
-            subdirs = get_immediate_subdirectories(dir)
-            for subdir in subdirs:
-                ExtractFeaturesForDir(args, subdir, prefix + dir.split('/')[-1] + '_')
-    if failed:
-        if os.path.exists(outputFileName):
-            os.remove(outputFileName)
+    if sleeper.poll() == 0:
+        if len(stderr) > 0:
+            print(sys.stderr, stderr)
+    else:
+        print(sys.stderr, 'dir: ' + str(dir) + ' was not completed in time')
+        failed = True
+        subdirs = get_immediate_subdirectories(dir)
+        for subdir in subdirs:
+            ExtractFeaturesForDir(args, subdir, prefix + dir.split('/')[-1] + '_')
 
 
 def ExtractFeaturesForDirsList(args, dirs):
@@ -66,7 +60,7 @@ def ExtractFeaturesForDirsList(args, dirs):
         shutil.rmtree(TMP_DIR, ignore_errors=True)
     os.makedirs(TMP_DIR)
     try:
-        p = multiprocessing.Pool(4)
+        p = multiprocessing.Pool(1)
         p.starmap(ParallelExtractDir, zip(itertools.repeat(args), dirs))
         #for dir in dirs:
         #    ExtractFeaturesForDir(args, dir, '')
@@ -94,5 +88,3 @@ if __name__ == '__main__':
         if len(subdirs) == 0:
             to_extract = [args.dir.rstrip('/')]
         ExtractFeaturesForDirsList(args, to_extract)
-
-
