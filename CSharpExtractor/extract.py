@@ -27,7 +27,8 @@ def ParallelExtractDir(args, dir):
 def ExtractFeaturesForDir(args, dir, prefix):
     command = ['dotnet', 'run', '--project', args.csproj,
                '--max_length', str(args.max_path_length), '--max_width', str(args.max_path_width),
-               '--path', dir, '--threads', str(args.num_threads)]
+               '--path', dir, '--threads', str(args.num_threads), '--ofile_name', str(args.ofile_name)]
+
 
     # print command
     # os.system(command)
@@ -77,12 +78,14 @@ def ExtractFeaturesForDirsList(args, dirs):
 
 
 if __name__ == '__main__':
+
     parser = ArgumentParser()
     parser.add_argument("-maxlen", "--max_path_length", dest="max_path_length", required=False, default=8)
     parser.add_argument("-maxwidth", "--max_path_width", dest="max_path_width", required=False, default=2)
     parser.add_argument("-threads", "--num_threads", dest="num_threads", required=False, default=64)
     parser.add_argument("--csproj", dest="csproj", required=True)
     parser.add_argument("-dir", "--dir", dest="dir", required=False)
+    parser.add_argument("-ofile_name", "--ofile_name", dest="ofile_name", required=True)
     args = parser.parse_args()
 
     if args.dir is not None:
