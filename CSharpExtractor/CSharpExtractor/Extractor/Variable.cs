@@ -94,8 +94,15 @@ namespace Extractor
 					string name = tokenToName[leaf];
 					SyntaxToken[] syntaxTokens = nameToTokens[name].ToArray();
                     var v = new Variable(name, syntaxTokens, methodTree);
-                    results.Add(v);
-				}
+
+                    //check if exists
+                    var matches = results.Where(p => p.Name == name).ToList();
+                    bool alreadyExists = (matches.Count != 0);
+                    if (!alreadyExists)
+                    {
+                        results.Add(v);
+                    }
+                }
 
                 return results;
 			}

@@ -39,13 +39,13 @@ mkdir -p data
 mkdir -p data/${DATASET_NAME}
 
 echo "Extracting paths from validation set..."
-${PYTHON} CSharpExtractor/extract.py --dir ${VAL_DIR} --max_path_length 8 --max_path_width 2 --num_threads ${NUM_THREADS} --csproj ${EXTRACTOR_JAR} > ${VAL_DATA_FILE}
+${PYTHON} CSharpExtractor/extract.py --dir ${VAL_DIR} --max_path_length 8 --max_path_width 2 --num_threads ${NUM_THREADS} --csproj ${EXTRACTOR_JAR} --ofile_name ${VAL_DATA_FILE}
 echo "Finished extracting paths from validation set"
 echo "Extracting paths from test set..."
-${PYTHON} CSharpExtractor/extract.py --dir ${TEST_DIR} --max_path_length 8 --max_path_width 2 --num_threads ${NUM_THREADS} --csproj ${EXTRACTOR_JAR} > ${TEST_DATA_FILE}
+${PYTHON} CSharpExtractor/extract.py --dir ${TEST_DIR} --max_path_length 8 --max_path_width 2 --num_threads ${NUM_THREADS} --csproj ${EXTRACTOR_JAR} --ofile_name ${TEST_DATA_FILE}
 echo "Finished extracting paths from test set"
 echo "Extracting paths from training set..."
-${PYTHON} CSharpExtractor/extract.py --dir ${TRAIN_DIR} --max_path_length 8 --max_path_width 2 --num_threads ${NUM_THREADS} --csproj ${EXTRACTOR_JAR} > ${TRAIN_DATA_FILE}
+${PYTHON} CSharpExtractor/extract.py --dir ${TRAIN_DIR} --max_path_length 8 --max_path_width 2 --num_threads ${NUM_THREADS} --csproj ${EXTRACTOR_JAR} --ofile_name ${TRAIN_DATA_FILE}
 echo "Finished extracting paths from training set"
 
 TARGET_HISTOGRAM_FILE=data/${DATASET_NAME}/${DATASET_NAME}.histo.tgt.c2v

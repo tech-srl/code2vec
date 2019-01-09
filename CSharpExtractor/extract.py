@@ -27,35 +27,30 @@ def ParallelExtractDir(args, dir):
 def ExtractFeaturesForDir(args, dir, prefix):
     command = ['dotnet', 'run', '--project', args.csproj,
                '--max_length', str(args.max_path_length), '--max_width', str(args.max_path_width),
-               '--path', dir, '--threads', str(args.num_threads)]
+               '--path', dir, '--threads', str(args.num_threads), '--ofile_name', str(args.ofile_name)]
+
 
     # print command
     # os.system(command)
     kill = lambda process: process.kill()
-    outputFileName = TMP_DIR + prefix + dir.split('/')[-1]
-    failed = False
-    with open(outputFileName, 'a') as outputFile:
-        sleeper = subprocess.Popen(command, stdout=outputFile, stderr=subprocess.PIPE)
-        timer = Timer(600000, kill, [sleeper])
+    sleeper = subprocess.Popen(command, stderr=subprocess.PIPE)
+    timer = Timer(600000, kill, [sleeper])
 
-        try:
-            timer.start()
-            stdout, stderr = sleeper.communicate()
-        finally:
-            timer.cancel()
+    try:
+        timer.start()
+        _, stderr = sleeper.communicate()
+    finally:
+        timer.cancel()
 
-        if sleeper.poll() == 0:
-            if len(stderr) > 0:
-                print(sys.stderr, stderr, file=sys.stdout)
-        else:
-            print(sys.stderr, 'dir: ' + str(dir) + ' was not completed in time', file=sys.stdout)
-            failed = True
-            subdirs = get_immediate_subdirectories(dir)
-            for subdir in subdirs:
-                ExtractFeaturesForDir(args, subdir, prefix + dir.split('/')[-1] + '_')
-    if failed:
-        if os.path.exists(outputFileName):
-            os.remove(outputFileName)
+    if sleeper.poll() == 0:
+        if len(stderr) > 0:
+            print(sys.stderr, stderr)
+    else:
+        print(sys.stderr, 'dir: ' + str(dir) + ' was not completed in time')
+        failed = True
+        subdirs = get_immediate_subdirectories(dir)
+        for subdir in subdirs:
+            ExtractFeaturesForDir(args, subdir, prefix + dir.split('/')[-1] + '_')
 
 
 def ExtractFeaturesForDirsList(args, dirs):
@@ -77,12 +72,14 @@ def ExtractFeaturesForDirsList(args, dirs):
 
 
 if __name__ == '__main__':
+
     parser = ArgumentParser()
     parser.add_argument("-maxlen", "--max_path_length", dest="max_path_length", required=False, default=8)
     parser.add_argument("-maxwidth", "--max_path_width", dest="max_path_width", required=False, default=2)
     parser.add_argument("-threads", "--num_threads", dest="num_threads", required=False, default=64)
     parser.add_argument("--csproj", dest="csproj", required=True)
     parser.add_argument("-dir", "--dir", dest="dir", required=False)
+    parser.add_argument("-ofile_name", "--ofile_name", dest="ofile_name", required=True)
     args = parser.parse_args()
 
     if args.dir is not None:
@@ -91,5 +88,3 @@ if __name__ == '__main__':
         if len(subdirs) == 0:
             to_extract = [args.dir.rstrip('/')]
         ExtractFeaturesForDirsList(args, to_extract)
-
-

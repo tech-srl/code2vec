@@ -6,6 +6,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Diagnostics;
+
 
 namespace Extractor
 {
@@ -27,12 +29,14 @@ namespace Extractor
         public int WidthLimit { get; set; }
         public string Code { get; set; }
         public bool ShouldHash { get; set; }
+        public int MaxContexts { get; set; }
 
-		public Extractor(string code, Options opts)
+        public Extractor(string code, Options opts)
 		{
             LengthLimit = opts.MaxLength;
             WidthLimit = opts.MaxWidth;
             ShouldHash = !opts.NoHash;
+            MaxContexts = opts.MaxContexts;
             Code = code;
 		}
 
@@ -104,29 +108,32 @@ namespace Extractor
 			return builder.ToString();
 		}
 
-		internal IEnumerable<PathFinder.Path> GetInternalPaths(Tree tree)
-		{
+        internal IEnumerable<PathFinder.Path> GetInternalPaths(Tree tree)
+        {
             var finder = new PathFinder(tree, LengthLimit, WidthLimit);
-            foreach (Tuple<Variable, Variable> varPair in 
-			         Utilities.WeakConcat(Utilities.Choose2(variables), 
-			                              variables.Select((arg) => new Tuple<Variable,Variable>(arg,arg))))
-			{
-				bool pathToSelf = varPair.Item1 == varPair.Item2;
 
-				foreach(var lhs in varPair.Item1.Leaves)
-				foreach (var rhs in varPair.Item2.Leaves)
-				{
-					if (lhs == rhs)
-							continue;
-					
-					PathFinder.Path path = finder.FindPath(lhs, rhs, limited: true);
+            var allPairs = Utilities.ReservoirSample(Utilities.WeakConcat(Utilities.Choose2(variables),
+                         variables.Select((arg) => new Tuple<Variable, Variable>(arg, arg))), MaxContexts);
 
-					if (path == null)
-						continue;
-                    
+            //iterate over variable-variable pairs
+            foreach (Tuple<Variable, Variable> varPair in allPairs)
+            {
+                bool pathToSelf = varPair.Item1 == varPair.Item2;
 
-					yield return path;
-				}
+                foreach (var rhs in varPair.Item2.Leaves)
+                    foreach (var lhs in varPair.Item1.Leaves)
+    				{
+                        
+                        if (lhs == rhs)
+    						continue;
+
+                        PathFinder.Path path = finder.FindPath(lhs, rhs, limited: true);
+
+    					if (path == null)
+    						continue;
+                            
+                        yield return path;
+    				}
 			}
 		}
 
@@ -167,6 +174,7 @@ namespace Extractor
             List<String> results = new List<string>();
 
             foreach(var method in methods) {
+
                 String methodName = method.Identifier.ValueText;
                 Tree methodTree = new Tree(method);
                 var subtokensMethodName = Utilities.SplitToSubtokens(methodName);
@@ -185,10 +193,12 @@ namespace Extractor
 
                 foreach (PathFinder.Path path in GetInternalPaths(methodTree))
                 {
-                    contexts.Add(SplitNameUnlessEmpty(tokenToVar[path.Left].Name)
+                    String pathString = SplitNameUnlessEmpty(tokenToVar[path.Left].Name)
                         + "," + MaybeHash(this.PathNodesToString(path))
-                        + "," + SplitNameUnlessEmpty(tokenToVar[path.Right].Name));
+                        + "," + SplitNameUnlessEmpty(tokenToVar[path.Right].Name);
 
+                    Debug.WriteLine(path.Left.FullSpan+" "+tokenToVar[path.Left].Name+ "," +this.PathNodesToString(path)+ "," + tokenToVar[path.Right].Name+" "+path.Right.FullSpan);    
+                    contexts.Add(pathString);
                 }
 
                 var commentNodes = tree.GetRoot().DescendantTrivia().Where(
@@ -206,7 +216,7 @@ namespace Extractor
                         contexts.Add(batch + "," + "COMMENT" + "," + batch);
                     }
                 }
-                results.Add(String.Join("|", subtokensMethodName) + " " + String.Join(" ", contexts));
+                results.Add(String.Join("|", subtokensMethodName) + " " + String.Join(" ", contexts));  
             }
             return results;
         }

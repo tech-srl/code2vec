@@ -44,9 +44,12 @@ namespace Extractor
 
             results = files.AsParallel().WithDegreeOfParallelism(options.Threads).SelectMany(filename => ExtractSingleFile(filename, options));
 
-            foreach (var res in results)
+            using (StreamWriter sw = new StreamWriter(options.OFileName, append: true))
             {
-                Console.WriteLine(res);
+                foreach (var res in results)
+                {
+                    sw.WriteLine(res);
+                }
             }
         }
     }
