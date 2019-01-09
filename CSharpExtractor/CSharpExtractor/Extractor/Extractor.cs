@@ -112,11 +112,11 @@ namespace Extractor
         {
             var finder = new PathFinder(tree, LengthLimit, WidthLimit);
 
-            var all_the_pairs = Utilities.ReservoirSample(Utilities.WeakConcat(Utilities.Choose2(variables),
+            var allPairs = Utilities.ReservoirSample(Utilities.WeakConcat(Utilities.Choose2(variables),
                          variables.Select((arg) => new Tuple<Variable, Variable>(arg, arg))), MaxContexts);
 
             //iterate over variable-variable pairs
-            foreach (Tuple<Variable, Variable> varPair in all_the_pairs)
+            foreach (Tuple<Variable, Variable> varPair in allPairs)
             {
                 bool pathToSelf = varPair.Item1 == varPair.Item2;
 
@@ -193,12 +193,12 @@ namespace Extractor
 
                 foreach (PathFinder.Path path in GetInternalPaths(methodTree))
                 {
-                    String pp = SplitNameUnlessEmpty(tokenToVar[path.Left].Name)
+                    String pathString = SplitNameUnlessEmpty(tokenToVar[path.Left].Name)
                         + "," + MaybeHash(this.PathNodesToString(path))
                         + "," + SplitNameUnlessEmpty(tokenToVar[path.Right].Name);
 
                     Debug.WriteLine(path.Left.FullSpan+" "+tokenToVar[path.Left].Name+ "," +this.PathNodesToString(path)+ "," + tokenToVar[path.Right].Name+" "+path.Right.FullSpan);    
-                    contexts.Add(pp);
+                    contexts.Add(pathString);
                 }
 
                 var commentNodes = tree.GetRoot().DescendantTrivia().Where(
