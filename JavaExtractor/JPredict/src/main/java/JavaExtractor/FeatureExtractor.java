@@ -22,8 +22,6 @@ import JavaExtractor.Visitors.FunctionVisitor;
 
 @SuppressWarnings("StringEquality")
 public class FeatureExtractor {
-	private String code;
-	private CompilationUnit m_CompilationUnit;
 	private CommandLineValues m_CommandLineValues;
 	private static Set<String> s_ParentTypeToAddChildId = Stream
 			.of("AssignExpr", "ArrayAccessExpr", "FieldAccessExpr", "MethodCallExpr")
@@ -34,20 +32,15 @@ public class FeatureExtractor {
 	final static String upSymbol = "^";
 	final static String downSymbol = "_";
 
-	public FeatureExtractor(CommandLineValues commandLineValues, String code) {
+	public FeatureExtractor(CommandLineValues commandLineValues) {
 		this.m_CommandLineValues = commandLineValues;
-		this.code = code;
 	}
 
-	public CompilationUnit getParsedFile() {
-		return m_CompilationUnit;
-	}
-
-	public ArrayList<ProgramFeatures> extractFeatures() throws ParseException, IOException {
-		m_CompilationUnit = parseFileWithRetries(code);
+	public ArrayList<ProgramFeatures> extractFeatures(String code) throws ParseException, IOException {
+		CompilationUnit compilationUnit = parseFileWithRetries(code);
 		FunctionVisitor functionVisitor = new FunctionVisitor();
 
-		functionVisitor.visit(m_CompilationUnit, null);
+		functionVisitor.visit(compilationUnit, null);
 
 		ArrayList<MethodContent> methods = functionVisitor.getMethodContents();
 		ArrayList<ProgramFeatures> programs = generatePathFeatures(methods);
