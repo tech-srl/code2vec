@@ -45,8 +45,11 @@ echo "Extracting paths from test set..."
 ${PYTHON} CSharpExtractor/extract.py --dir ${TEST_DIR} --max_path_length 8 --max_path_width 2 --num_threads ${NUM_THREADS} --csproj ${EXTRACTOR_JAR} --ofile_name ${TEST_DATA_FILE}
 echo "Finished extracting paths from test set"
 echo "Extracting paths from training set..."
-${PYTHON} CSharpExtractor/extract.py --dir ${TRAIN_DIR} --max_path_length 8 --max_path_width 2 --num_threads ${NUM_THREADS} --csproj ${EXTRACTOR_JAR} --ofile_name ${TRAIN_DATA_FILE}
+${PYTHON} CSharpExtractor/extract.py --dir ${TRAIN_DIR} --max_path_length 8 --max_path_width 2 --num_threads ${NUM_THREADS} --csproj ${EXTRACTOR_JAR} --ofile_name ${TRAIN_DATA_FILE}_unshuf
 echo "Finished extracting paths from training set"
+echo "Shuffling training data"
+cat ${TRAIN_DATA_FILE}_unshuf | shuf > ${TRAIN_DATA_FILE}
+rm ${TRAIN_DATA_FILE}_unshuf
 
 TARGET_HISTOGRAM_FILE=data/${DATASET_NAME}/${DATASET_NAME}.histo.tgt.c2v
 ORIGIN_HISTOGRAM_FILE=data/${DATASET_NAME}/${DATASET_NAME}.histo.ori.c2v
