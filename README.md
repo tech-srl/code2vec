@@ -242,13 +242,27 @@ testing. Overall, it contains about 16M examples.
 
 ## Citation
 
-[code2vec: Learning Distributed Representations of Code](https://arxiv.org/pdf/1803.09473)
+[code2vec: Learning Distributed Representations of Code](https://urialon.cswp.cs.technion.ac.il/wp-content/uploads/sites/83/2018/12/code2vec-popl19.pdf)
 
 ```
-@article{alon2018code2vec,
-  title={code2vec: Learning Distributed Representations of Code},
-  author={Alon, Uri and Zilberstein, Meital and Levy, Omer and Yahav, Eran},
-  journal={arXiv preprint arXiv:1803.09473},
-  year={2018}
+article{alon2019code2vec,
+ author = {Alon, Uri and Zilberstein, Meital and Levy, Omer and Yahav, Eran},
+ title = {Code2Vec: Learning Distributed Representations of Code},
+ journal = {Proc. ACM Program. Lang.},
+ issue_date = {January 2019},
+ volume = {3},
+ number = {POPL},
+ month = jan,
+ year = {2019},
+ issn = {2475-1421},
+ pages = {40:1--40:29},
+ articleno = {40},
+ numpages = {29},
+ url = {http://doi.acm.org/10.1145/3290353},
+ doi = {10.1145/3290353},
+ acmid = {3290353},
+ publisher = {ACM},
+ address = {New York, NY, USA},
+ keywords = {Big Code, Distributed Representations, Machine Learning},
 }
 ```
