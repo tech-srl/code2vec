@@ -245,7 +245,7 @@ testing. Overall, it contains about 16M examples.
 [code2vec: Learning Distributed Representations of Code](https://urialon.cswp.cs.technion.ac.il/wp-content/uploads/sites/83/2018/12/code2vec-popl19.pdf)
 
 ```
-article{alon2019code2vec,
+@article{alon2019code2vec,
  author = {Alon, Uri and Zilberstein, Meital and Levy, Omer and Yahav, Eran},
  title = {Code2Vec: Learning Distributed Representations of Code},
  journal = {Proc. ACM Program. Lang.},
