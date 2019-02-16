@@ -27,6 +27,7 @@ class Config:
         config.SAVE_PATH = args.save_path
         config.LOAD_PATH = args.load_path
         config.RELEASE = args.release
+        config.EXPORT_CODE_VECTORS = args.export_code_vectors
         return config
 
     def __init__(self):
@@ -48,7 +49,7 @@ class Config:
         self.LOAD_PATH = ''
         self.MAX_TO_KEEP = 0
         self.RELEASE = False
-
+        self.EXPORT_CODE_VECTORS = False
 
 class common:
     noSuchWord = "NoSuchWord"

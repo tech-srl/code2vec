@@ -24,6 +24,8 @@ if __name__ == '__main__':
                         help="save word (token) vectors in word2vec format")
     parser.add_argument('--save_t2v', dest='save_t2v', required=False,
                         help="save target vectors in word2vec format")
+    parser.add_argument('--export_code_vectors', action='store_true', required=False,
+                        help="export code vectors for the given examples")
     parser.add_argument('--release', action='store_true',
                         help='if specified and loading a trained model, release the loaded model for a lower model '
                              'size.')

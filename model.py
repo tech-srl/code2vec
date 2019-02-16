@@ -21,7 +21,7 @@ class Model:
 
         self.eval_placeholder = None
         self.predict_placeholder = None
-        self.eval_top_words_op, self.eval_top_values_op, self.eval_original_names_op = None, None, None
+        self.eval_top_words_op, self.eval_top_values_op, self.eval_original_names_op, self.eval_code_vectors = None, None, None, None
         self.predict_top_words_op, self.predict_top_values_op, self.predict_original_names_op = None, None, None
 
         if config.LOAD_PATH:
@@ -130,7 +130,7 @@ class Model:
                                                                   target_word_to_index=self.target_word_to_index,
                                                                   config=self.config, is_evaluating=True)
             self.eval_placeholder = self.eval_queue.get_input_placeholder()
-            self.eval_top_words_op, self.eval_top_values_op, self.eval_original_names_op, _, _, _, _ = \
+            self.eval_top_words_op, self.eval_top_values_op, self.eval_original_names_op, _, _, _, _, self.eval_code_vectors = \
                 self.build_test_graph(self.eval_queue.get_filtered_batches())
             self.saver = tf.train.Saver()
 
@@ -149,6 +149,8 @@ class Model:
             print('Done loading test data')
 
         with open('log.txt', 'w') as output_file:
+            if self.config.EXPORT_CODE_VECTORS:
+                code_vectors_file = open(self.config.TEST_PATH + '.vectors', 'w')
             num_correct_predictions = np.zeros(self.topk)
             total_predictions = 0
             total_prediction_batches = 0
@@ -156,8 +158,8 @@ class Model:
             start_time = time.time()
 
             for batch in common.split_to_batches(self.eval_data_lines, self.config.TEST_BATCH_SIZE):
-                top_words, top_scores, original_names = self.sess.run(
-                    [self.eval_top_words_op, self.eval_top_values_op, self.eval_original_names_op],
+                top_words, top_scores, original_names, code_vectors = self.sess.run(
+                    [self.eval_top_words_op, self.eval_top_values_op, self.eval_original_names_op, self.eval_code_vectors],
                     feed_dict={self.eval_placeholder: batch})
                 top_words, original_names = common.binary_to_string_matrix(top_words), common.binary_to_string_matrix(
                     original_names)
@@ -172,6 +174,8 @@ class Model:
 
                 total_predictions += len(original_names)
                 total_prediction_batches += 1
+                if self.config.EXPORT_CODE_VECTORS:
+                    self.write_code_vectors(code_vectors_file, code_vectors)
                 if total_prediction_batches % self.num_batches_to_log == 0:
                     elapsed = time.time() - start_time
                     # start_time = time.time()
@@ -179,13 +183,19 @@ class Model:
 
             print('Done testing, epoch reached')
             output_file.write(str(num_correct_predictions / total_predictions) + '\n')
-
+        if self.config.EXPORT_CODE_VECTORS:
+            code_vectors_file.close()
+        
         elapsed = int(time.time() - eval_start_time)
         precision, recall, f1 = self.calculate_results(true_positive, false_positive, false_negative)
         print("Evaluation time: %sH:%sM:%sS" % ((elapsed // 60 // 60), (elapsed // 60) % 60, elapsed % 60))
         del self.eval_data_lines
         self.eval_data_lines = None
         return num_correct_predictions / total_predictions, precision, recall, f1
+
+    def write_code_vectors(self, file, code_vectors):
+        for vec in code_vectors:
+            file.write(' '.join(map(str, vec)) + '\n')
 
     def update_per_subtoken_statistics(self, results, true_positive, false_positive, false_negative):
         for original_name, top_words in results:
@@ -342,7 +352,7 @@ class Model:
         if normalize_scores:
             top_scores = tf.nn.softmax(top_scores)
 
-        return top_words, top_scores, original_words, attention_weights, source_string, path_string, path_target_string
+        return top_words, top_scores, original_words, attention_weights, source_string, path_string, path_target_string, code_vectors
 
     def predict(self, predict_data_lines):
         if self.predict_queue is None:
@@ -352,19 +362,20 @@ class Model:
                                                                      config=self.config, is_evaluating=True)
             self.predict_placeholder = self.predict_queue.get_input_placeholder()
             self.predict_top_words_op, self.predict_top_values_op, self.predict_original_names_op, \
-            self.attention_weights_op, self.predict_source_string, self.predict_path_string, self.predict_path_target_string = \
+            self.attention_weights_op, self.predict_source_string, self.predict_path_string, self.predict_path_target_string, self.predict_code_vectors = \
                 self.build_test_graph(self.predict_queue.get_filtered_batches(), normalize_scores=True)
 
             self.initialize_session_variables(self.sess)
             self.saver = tf.train.Saver()
             self.load_model(self.sess)
 
+        code_vectors = []
         results = []
         for batch in common.split_to_batches(predict_data_lines, 1):
-            top_words, top_scores, original_names, attention_weights, source_strings, path_strings, target_strings = self.sess.run(
+            top_words, top_scores, original_names, attention_weights, source_strings, path_strings, target_strings, batch_code_vectors = self.sess.run(
                 [self.predict_top_words_op, self.predict_top_values_op, self.predict_original_names_op,
                  self.attention_weights_op, self.predict_source_string, self.predict_path_string,
-                 self.predict_path_target_string],
+                 self.predict_path_target_string, self.predict_code_vectors],
                 feed_dict={self.predict_placeholder: batch})
             top_words, original_names = common.binary_to_string_matrix(top_words), common.binary_to_string_matrix(
                 original_names)
@@ -373,7 +384,11 @@ class Model:
                                                              attention_weights)
             original_names = [w for l in original_names for w in l]
             results.append((original_names[0], top_words[0], top_scores[0], attention_per_path))
-        return results
+            if self.config.EXPORT_CODE_VECTORS:
+                code_vectors.append(batch_code_vectors)
+        if len(code_vectors) > 0:
+            code_vectors = np.vstack(code_vectors)
+        return results, code_vectors
 
     def get_attention_per_path(self, source_strings, path_strings, target_strings, attention_weights):
         attention_weights = np.squeeze(attention_weights)  # (max_contexts, )

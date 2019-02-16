@@ -190,6 +190,16 @@ python3
 The above python commands will result in the closest name to both "equals" and "to|lower", which is "equals|ignore|case".
 Note: In embeddings that were exported manually using the "--save_w2v" or "--save_t2v" flags, the input token and target words are saved using the symbol "|" as a subtokens delimiter ("*toLower*" is saved as: "*to|lower*"). In the embeddings that are available to download (which are the same as in the paper), the "|" symbol is not used, thus "*toLower*" is saved as "*tolower*".
 
+### Exporting the code vectors for the given code examples
+The flag `--export_code_vectors` allows to export the code vectors for the given examples. 
+
+If used with the `--test <TEST_FILE>` flag,
+a file named `<TEST_FILE>.vectors` will be saved in the same directory as `<TEST_FILE>`. 
+Each row in the saved file is the code vector of the code snipped in the corresponding row in `<TEST_FILE>`.
+ 
+If used with the `--predict` flag, the code vector will be printed to console.
+
+
 ## Extending to other languages  
 In order to extend code2vec to work with other languages other than Java, a new extractor (similar to the [JavaExtractor](JavaExtractor))
 should be implemented, and be called by [preprocess.sh](preprocess.sh).
