@@ -24,17 +24,18 @@ class Model:
         self.eval_top_words_op, self.eval_top_values_op, self.eval_original_names_op, self.eval_code_vectors = None, None, None, None
         self.predict_top_words_op, self.predict_top_values_op, self.predict_original_names_op = None, None, None
 
-        if config.LOAD_PATH:
-            self.load_model(sess=None)
-        else:
+        if config.TRAIN_PATH:
             with open('{}.dict.c2v'.format(config.TRAIN_PATH), 'rb') as file:
                 word_to_count = pickle.load(file)
                 path_to_count = pickle.load(file)
                 target_to_count = pickle.load(file)
                 num_training_examples = pickle.load(file)
+                self.config.NUM_EXAMPLES = num_training_examples
                 print('Dictionaries loaded.')
-            self.config.NUM_EXAMPLES = num_training_examples
-
+        
+        if config.LOAD_PATH:
+            self.load_model(sess=None)
+        else:
             self.word_to_index, self.index_to_word, self.word_vocab_size = \
                 common.load_vocab_from_dict(word_to_count, config.WORDS_VOCAB_SIZE, start_from=1)
             print('Loaded word vocab. size: %d' % self.word_vocab_size)
