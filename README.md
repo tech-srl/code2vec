@@ -78,6 +78,21 @@ tar -xvzf java14m_model.tar.gz
 ##### Note:
 This trained model is in a "released" state, which means that we stripped it from its training parameters and can thus be used for inference, but cannot be further trained. If you use this trained model in the next steps, use 'saved_model_iter8.release' instead of 'saved_model_iter8' in every command line example that loads the model such as: '--load models/java14_model/saved_model_iter8'. To read how to release a model, see [Releasing the model](#releasing-the-model).
 
+#### Downloading a trained model () and pursue its training
+
+We provide another trained model but not released (this is why it is much bigger).
+
+```
+wget https://zenodo.org/record/2577346/files/trained_model.tar
+tar -xvzf trained_model.tar
+```  
+
+Then use the `--load` CLI interface of `code2vec.py` to pursue the training of this model, _e.g._:
+
+```text
+python3 -u code2vec.py --load trained_model/saved_model_iter8 --data ${data} --test ${test_data} --save ${model_dir}/saved_model 
+```
+
 #### Training a model from scratch
 To train a model from scratch:
   * Edit the file [train.sh](train.sh) to point it to the right preprocessed data. By default, 
