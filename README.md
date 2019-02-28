@@ -67,7 +67,7 @@ In order to create and preprocess a new dataset (for example, to compare code2ve
 ### Step 2: Training a model
 You can either download an already-trained model, or train a new model using a preprocessed dataset.
 
-#### Downloading a trained model (1.4G)
+#### Downloading a trained model (1.4 GB)
 We already trained a model for 8 epochs on the data that was preprocessed in the previous step.
 The number of epochs was chosen using [early stopping](https://en.wikipedia.org/wiki/Early_stopping), as the version that maximized the F1 score on the validation set.
 ```
@@ -77,6 +77,17 @@ tar -xvzf java14m_model.tar.gz
 
 ##### Note:
 This trained model is in a "released" state, which means that we stripped it from its training parameters and can thus be used for inference, but cannot be further trained. If you use this trained model in the next steps, use 'saved_model_iter8.release' instead of 'saved_model_iter8' in every command line example that loads the model such as: '--load models/java14_model/saved_model_iter8'. To read how to release a model, see [Releasing the model](#releasing-the-model).
+
+#### Downloading a trained model (3.5 GB) _which can be further trained_
+
+A non-stripped trained model can be obtained using:
+
+```
+https://s3.amazonaws.com/code2vec/model/java14m_model_trainable.tar.gz
+tar -xvzf trained_model.tar
+```  
+
+This model weights more than twice than the stripped version, and it is recommended only if you wish to continue training a model which is already trained. To continue training this trained model, use the `--load` flag to load the trained model; the `--data` flag to point to the new dataset to train on; and the `--save` flag to provide a new save path.
 
 #### Training a model from scratch
 To train a model from scratch:
