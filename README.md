@@ -83,7 +83,7 @@ This trained model is in a "released" state, which means that we stripped it fro
 A non-stripped trained model can be obtained using:
 
 ```
-https://s3.amazonaws.com/code2vec/model/java14m_model_trainable.tar.gz
+wget https://s3.amazonaws.com/code2vec/model/java14m_model_trainable.tar.gz
 tar -xvzf trained_model.tar
 ```  
 
@@ -122,12 +122,12 @@ To manually examine a trained model, run:
 ```
 python3 code2vec.py --load models/java14_model/saved_model_iter8 --predict
 ```
-After the model loads, follow the instructions and edit the file Input.java and enter a Java 
+After the model loads, follow the instructions and edit the file [Input.java](Input.java) and enter a Java 
 method or code snippet, and examine the model's predictions and attention scores.
 
 ## Configuration
-Changing hyper-parameters is possible by editing the file [common.py](common
-.py).
+Changing hyper-parameters is possible by editing the file
+[common.py](common.py).
 
 Here are some of the parameters and their description:
 #### config.NUM_EPOCHS = 20
