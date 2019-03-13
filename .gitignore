@@ -1,2 +1,6 @@
 *.class
 *.lst
+**/models/**
+**/data/**
+**/.idea/**
+*.tar.gz
