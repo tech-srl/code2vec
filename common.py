@@ -190,7 +190,8 @@ class common:
 
     @staticmethod
     def split_to_batches(data_lines, batch_size):
-        return [data_lines[x:x + batch_size] for x in range(0, len(data_lines), batch_size)]
+        for x in range(0, len(data_lines), batch_size):
+            yield data_lines[x:x + batch_size]
 
     @staticmethod
     def legal_method_names_checker(name):
