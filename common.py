@@ -8,6 +8,7 @@ class Config:
     @staticmethod
     def get_default_config(args):
         config = Config()
+        config.DL_FRAMEWORK = 'keras'
         config.NUM_EPOCHS = 20
         config.SAVE_EVERY_EPOCHS = 1
         config.BATCH_SIZE = 1024
@@ -21,6 +22,8 @@ class Config:
         config.PATHS_VOCAB_SIZE = 911417
         config.EMBEDDINGS_SIZE = 128
         config.MAX_TO_KEEP = 10
+        config.DROPOUT_KEEP_RATE = 0.75
+
         # Automatically filled, do not edit:
         config.TRAIN_PATH = args.data_path
         config.TEST_PATH = args.test_path
@@ -31,25 +34,29 @@ class Config:
         return config
 
     def __init__(self):
-        self.NUM_EPOCHS = 0
-        self.SAVE_EVERY_EPOCHS = 0
-        self.BATCH_SIZE = 0
-        self.TEST_BATCH_SIZE = 0
-        self.READING_BATCH_SIZE = 0
-        self.NUM_BATCHING_THREADS = 0
-        self.BATCH_QUEUE_SIZE = 0
-        self.TRAIN_PATH = ''
-        self.TEST_PATH = ''
-        self.MAX_CONTEXTS = 0
-        self.WORDS_VOCAB_SIZE = 0
-        self.TARGET_VOCAB_SIZE = 0
-        self.PATHS_VOCAB_SIZE = 0
-        self.EMBEDDINGS_SIZE = 0
-        self.SAVE_PATH = ''
-        self.LOAD_PATH = ''
-        self.MAX_TO_KEEP = 0
-        self.RELEASE = False
-        self.EXPORT_CODE_VECTORS = False
+        self.DL_FRAMEWORK: str = ''  # in {'keras', 'tensorflow'}
+        self.NUM_EPOCHS: int = 0
+        self.SAVE_EVERY_EPOCHS: int = 0
+        self.BATCH_SIZE: int = 0
+        self.TEST_BATCH_SIZE: int = 0
+        self.READING_BATCH_SIZE: int = 0
+        self.NUM_BATCHING_THREADS: int = 0
+        self.BATCH_QUEUE_SIZE: int = 0
+        self.MAX_CONTEXTS: int = 0
+        self.WORDS_VOCAB_SIZE: int = 0
+        self.TARGET_VOCAB_SIZE: int = 0
+        self.PATHS_VOCAB_SIZE: int = 0
+        self.EMBEDDINGS_SIZE: int = 0
+        self.MAX_TO_KEEP: int = 0
+        self.DROPOUT_KEEP_RATE: float = 0
+
+        self.SAVE_PATH: str = ''
+        self.LOAD_PATH: str = ''
+        self.TRAIN_PATH: str = ''
+        self.TEST_PATH: str = ''
+        self.RELEASE: bool = False
+        self.EXPORT_CODE_VECTORS: bool = False
+
 
 class common:
     noSuchWord = "NoSuchWord"
