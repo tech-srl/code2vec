@@ -10,7 +10,7 @@ class AttentionLayer(Layer):
         super(AttentionLayer, self).__init__(**kwargs)
 
     def build(self, input_shape):
-        # Expected input shape consists of: (batch, input_length, input_dim)
+        # Expected input shape consists of a triplet: (batch, input_length, input_dim)
         if len(input_shape) != 3:
             raise ValueError("Input shape for AttentionLayer should be of 3 dimension.")
 
@@ -43,8 +43,8 @@ class AttentionLayer(Layer):
             mask = K.log(mask)
             attention_weights += mask
 
-        attention_weights = K.softmax(attention_weights, axis=1)
-        result = K.sum(inputs * attention_weights, axis=1)  # (batch, input_length)
+        attention_weights = K.softmax(attention_weights, axis=1)  # (batch, input_length, 1)
+        result = K.sum(inputs * attention_weights, axis=1)  # (batch, input_length)  [multiplication uses broadcast]
         return result
 
     def compute_output_shape(self, input_shape):
