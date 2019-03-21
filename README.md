@@ -69,7 +69,7 @@ You can either download an already-trained model, or train a new model using a p
 
 #### Downloading a trained model (1.4 GB)
 We already trained a model for 8 epochs on the data that was preprocessed in the previous step.
-The number of epochs was chosen using [early stopping](https://en.wikipedia.org/wiki/Early_stopping), as the version that maximized the F1 score on the validation set.
+The number of epochs was chosen using [early stopping](https://en.wikipedia.org/wiki/Early_stopping), as the version that maximized the F1 score on the validation set. This model can be downloaded [here](https://s3.amazonaws.com/code2vec/model/java14m_model.tar.gz) or using:
 ```
 wget https://s3.amazonaws.com/code2vec/model/java14m_model.tar.gz
 tar -xvzf java14m_model.tar.gz
@@ -80,10 +80,10 @@ This trained model is in a "released" state, which means that we stripped it fro
 
 #### Downloading a trained model (3.5 GB) _which can be further trained_
 
-A non-stripped trained model can be obtained using:
+A non-stripped trained model can be obtained [here](https://s3.amazonaws.com/code2vec/model/java14m_model_trainable.tar.gz) or using:
 
 ```
-https://s3.amazonaws.com/code2vec/model/java14m_model_trainable.tar.gz
+wget https://s3.amazonaws.com/code2vec/model/java14m_model_trainable.tar.gz
 tar -xvzf trained_model.tar
 ```  
 
