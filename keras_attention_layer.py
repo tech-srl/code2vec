@@ -1,11 +1,10 @@
 import tensorflow as tf
-from tensorflow import keras
+import tensorflow.keras
 import tensorflow.keras.backend as K
-from tensorflow.keras.layers import Layer
 from typing import Optional
 
 
-class AttentionLayer(Layer):
+class AttentionLayer(tf.keras.layers.Layer):
     def __init__(self, **kwargs):
         super(AttentionLayer, self).__init__(**kwargs)
 
@@ -48,4 +47,4 @@ class AttentionLayer(Layer):
         return result
 
     def compute_output_shape(self, input_shape):
-        return input_shape[0], self.input_length
+        return input_shape[0], input_shape[2]  # (batch, input_dim)

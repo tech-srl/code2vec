@@ -1,9 +1,9 @@
 import tensorflow as tf
-from tensorflow import keras
+import tensorflow.keras
 from tensorflow.keras.layers import *
 import tensorflow.keras.backend as K
 
-import PathContextReader
+from path_context_reader import PathContextInputTensors, PathContextReader
 import numpy as np
 import time
 import pickle
@@ -16,8 +16,9 @@ from model_base import ModelBase
 class Model(ModelBase):
     def __init__(self, config: Config):
         super(Model, self).__init__(config)
+        K.set_session(self.sess)
 
-    def build_keras_training_model(self) -> keras.Model:
+    def build_keras_model(self) -> tensorflow.keras.Model:
         # Each input sample consists of a bag of x`MAX_CONTEXTS` tuples (source_terminal, path, target_terminal).
         # The valid mask indicates for each context whether it actually exists or it is just a padding.
         source_terminals_input = Input((self.config.MAX_CONTEXTS,))
@@ -52,77 +53,30 @@ class Model(ModelBase):
         out = Dense(self.target_word_vocab_size + 1, use_bias=False)(code_vectors)
 
         inputs = [source_terminals_input, paths_input, target_terminals_input, valid_mask]
-        model = keras.Model(inputs=inputs, outputs=out)
+        model = tensorflow.keras.Model(inputs=inputs, outputs=out)
         model.compile(loss='sparse_categorical_crossentropy', optimizer='adam')
 
         return model
 
     def train(self):
-        # TODO: Split to `_train_with_tf()` and `_train_with_keras()`.
-        #       Keras `model.fit()` is much more elegant. No need for such manual evaluating & logging.
+        input_reader = PathContextReader(token_to_index=self.word_to_index,
+                                         path_to_index=self.path_to_index,
+                                         target_to_index=self.target_word_to_index,
+                                         config=self.config)
 
-        print('Starting training')
-        start_time = time.time()
+        model = self.build_keras_model()
+        print('Keras model built')
 
-        batch_num = 0
-        sum_loss = 0
-        multi_batch_start_time = time.time()
-        num_batches_to_evaluate = max(int(
-            self.config.NUM_EXAMPLES / self.config.BATCH_SIZE * self.config.SAVE_EVERY_EPOCHS), 1)
-
-        self.queue_thread = PathContextReader.PathContextReader(word_to_index=self.word_to_index,
-                                                                path_to_index=self.path_to_index,
-                                                                target_word_to_index=self.target_word_to_index,
-                                                                config=self.config)
-        input_tensors = self.queue_thread.input_tensors()
-
-        K.set_session(self.sess)
-        model = self.build_keras_training_model()
         # TODO: set keras model saver [max_to_keep=self.config.MAX_TO_KEEP]
+
+        # TODO: initialize the evaluation reader (and pass to model.fit() call)
 
         self.initialize_session_variables(self.sess)
         print('Initalized variables')
-        if self.config.LOAD_PATH:
-            self.load_model(self.sess)
-        with self.queue_thread.start(self.sess):
-            time.sleep(1)
-            print('Started reader...')
-            try:
-                while True:
-                    # Each iteration = batch. We iterate as long as the tf iterator (reader) yields batches.
-                    batch_num += 1
 
-                    nr_batches_per_epoch = batch_num // num_batches_to_evaluate  # FIXME: change to the actual value
-                    # Note: we call here `model.fit()` on each batch! it is not the wanted behaviour.
-                    # TODO: make the `tf.data` iterator produce batches for `keras_model.fit_generator()`
-                    #       without the external `while True` loop.
-                    model.fit(input_tensors[1:], input_tensors[0], steps_per_epoch=nr_batches_per_epoch)
-
-                    # TODO: Remove this. All of this part is actually relevant only for the tensorflow implementation.
-                    if batch_num % self.num_batches_to_log == 0:
-                        self.trace(sum_loss, batch_num, multi_batch_start_time)
-                        print('Number of waiting examples in queue: %d' % self.sess.run(
-                            "shuffle_batch/random_shuffle_queue_Size:0"))
-                        sum_loss = 0
-                        multi_batch_start_time = time.time()
-                    if batch_num % num_batches_to_evaluate == 0:
-                        epoch_num = int((batch_num / num_batches_to_evaluate) * self.config.SAVE_EVERY_EPOCHS)
-                        save_target = self.config.SAVE_PATH + '_iter' + str(epoch_num)
-                        self.save_model(self.sess, save_target)
-                        print('Saved after %d epochs in: %s' % (epoch_num, save_target))
-                        results, precision, recall, f1 = self.evaluate()
-                        print('Accuracy after %d epochs: %s' % (epoch_num, results[:5]))
-                        print('After ' + str(epoch_num) + ' epochs: Precision: ' + str(precision) + ', recall: ' + str(
-                            recall) + ', F1: ' + str(f1))
-            except tf.errors.OutOfRangeError:
-                print('Done training')
-
-        if self.config.SAVE_PATH:
-            self.save_model(self.sess, self.config.SAVE_PATH)
-            print('Model saved in file: %s' % self.config.SAVE_PATH)
-
-        elapsed = int(time.time() - start_time)
-        print("Training time: %sH:%sM:%sS\n" % ((elapsed // 60 // 60), (elapsed // 60) % 60, elapsed % 60))
+        input_reader.reset(self.sess)
+        model.fit(
+            input_reader.iterator, steps_per_epoch=self.config.steps_per_epoch, epochs=self.config.NUM_EPOCHS)
 
     def evaluate(self):
         raise NotImplemented()  # TODO: implement!

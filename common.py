@@ -2,6 +2,7 @@ import re
 import json
 import sys
 from enum import Enum
+from math import ceil
 
 
 class Config:
@@ -23,6 +24,10 @@ class Config:
         config.EMBEDDINGS_SIZE = 128
         config.MAX_TO_KEEP = 10
         config.DROPOUT_KEEP_RATE = 0.75
+
+        config.READER_NUM_PARALLEL_BATCHES = 1  # cpu cores [for tf.contrib.data.map_and_batch()]
+        config.SHUFFLE_BUFFER_SIZE = 10000
+        config.CSV_BUFFER_SIZE = 100 * 1024 * 1024  # 100 MB
 
         # Automatically filled, do not edit:
         config.TRAIN_PATH = args.data_path
@@ -50,6 +55,10 @@ class Config:
         self.MAX_TO_KEEP: int = 0
         self.DROPOUT_KEEP_RATE: float = 0
 
+        self.READER_NUM_PARALLEL_BATCHES: int = 0
+        self.SHUFFLE_BUFFER_SIZE: int = 0
+        self.CSV_BUFFER_SIZE: int = 0
+
         self.SAVE_PATH: str = ''
         self.LOAD_PATH: str = ''
         self.TRAIN_PATH: str = ''
@@ -57,9 +66,14 @@ class Config:
         self.RELEASE: bool = False
         self.EXPORT_CODE_VECTORS: bool = False
 
+    @property
+    def steps_per_epoch(self) -> int:
+        return ceil(self.NUM_EXAMPLES / self.BATCH_SIZE)
+
 
 class common:
     noSuchWord = "NoSuchWord"
+
 
     @staticmethod
     def normalize_word(word):
