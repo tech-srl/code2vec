@@ -181,6 +181,12 @@ class common:
             prediction_results.append(current_method_prediction_results)
         return prediction_results
 
+    @staticmethod
+    def tf_get_first_true(bool_tensor: tf.Tensor) -> tf.Tensor:
+        bool_tensor_as_int32 = tf.cast(bool_tensor, dtype=tf.int32)
+        cumsum = tf.cumsum(bool_tensor_as_int32, axis=-1, exclusive=False)
+        return tf.logical_and(tf.equal(cumsum, 1), bool_tensor)
+
 
 class PredictionResults:
     def __init__(self, original_name):
