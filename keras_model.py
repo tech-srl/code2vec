@@ -10,6 +10,7 @@ import pickle
 from common import common, VocabType
 from keras_attention_layer import AttentionLayer
 from keras_word_prediction_layer import WordPredictionLayer
+from keras_words_subtoken_metrics import WordsSubtokenPrecisionMetric, WordsSubtokenRecallMetric, WordsSubtokenF1Metric
 from config import Config
 from model_base import ModelBase
 
@@ -19,7 +20,7 @@ class Code2VecModel(ModelBase):
         super(Code2VecModel, self).__init__(config)
         K.set_session(self.sess)
 
-    def build_keras_model(self) -> keras.Model:
+    def _build_keras_model(self) -> keras.Model:
         # Each input sample consists of a bag of x`MAX_CONTEXTS` tuples (source_terminal, path, target_terminal).
         # The valid mask indicates for each context whether it actually exists or it is just a padding.
         source_terminals_input = Input((self.config.MAX_CONTEXTS,))
@@ -65,43 +66,22 @@ class Code2VecModel(ModelBase):
 
         inputs = [source_terminals_input, paths_input, target_terminals_input, valid_mask]
         model = keras.Model(inputs=inputs, outputs=final_softmax_out)
-        model.compile(loss='sparse_categorical_crossentropy', optimizer='adam',
-                      metrics=self.create_target_word_evaluation_metrics(target_word_prediction))
+        metrics = [
+            WordsSubtokenPrecisionMetric(self.index_to_target_word_table, target_word_prediction),
+            WordsSubtokenRecallMetric(self.index_to_target_word_table, target_word_prediction),
+            WordsSubtokenF1Metric(self.index_to_target_word_table, target_word_prediction)
+        ]
+        model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=metrics)
         return model
 
-    def create_target_word_evaluation_metrics(self, target_word_prediction):
-
-        def f1_metric(true_target_word_index, y_pred):
-            true_target_word_index = tf.reshape(tf.cast(true_target_word_index, dtype=tf.int64), [-1])
-            true_target_word_string = self.index_to_target_word_table.lookup(true_target_word_index)
-
-            true_target_subwords = tf.string_split(true_target_word_string, delimiter=' | ')
-            prediction_subwords = tf.string_split(target_word_prediction, delimiter=' | ')
-
-            subwords_intersection = tf.sets.intersection(true_target_subwords, prediction_subwords)
-
-            true_positive = tf.cast(tf.sets.size(subwords_intersection), dtype=tf.float32)
-            false_positive = tf.cast(tf.sets.size(tf.sets.difference(prediction_subwords, true_target_subwords)), dtype=tf.float32)
-            false_negative = tf.cast(tf.sets.size(tf.sets.difference(true_target_subwords, prediction_subwords)), dtype=tf.float32)
-
-            precision = true_positive / (true_positive + false_positive)
-            recall = true_positive / (true_positive + false_negative)
-            f1 = 2 * tf.multiply(precision, recall) / (precision + recall + K.epsilon())
-            f1 = tf.where(tf.is_nan(f1), tf.zeros_like(f1), f1)
-
-            # measurements = tf.stack([precision, recall, f1], axis=1)
-
-            return f1
-
-        return [f1_metric]
-
     def train(self):
-        input_reader = PathContextReader(token_to_index=self.word_to_index,
-                                         path_to_index=self.path_to_index,
-                                         target_to_index=self.target_word_to_index,
-                                         config=self.config)
+        train_data_input_reader = PathContextReader(
+            token_to_index=self.word_to_index,
+            path_to_index=self.path_to_index,
+            target_to_index=self.target_word_to_index,
+            config=self.config)
 
-        model = self.build_keras_model()
+        keras_model = self._build_keras_model()
         print('Keras model built')
 
         # TODO: set keras model saver [max_to_keep=self.config.MAX_TO_KEEP]
@@ -109,9 +89,8 @@ class Code2VecModel(ModelBase):
         # TODO: initialize the evaluation reader (and pass to model.fit() call)
 
         self.initialize_session_variables(self.sess)
-        print('Initalized variables')
 
-        model.fit(input_reader.dataset, steps_per_epoch=self.config.steps_per_epoch, epochs=self.config.NUM_EPOCHS)
+        keras_model.fit(train_data_input_reader.dataset, steps_per_epoch=self.config.steps_per_epoch, epochs=self.config.NUM_EPOCHS)
 
     def evaluate(self):
         raise NotImplemented()  # TODO: implement!

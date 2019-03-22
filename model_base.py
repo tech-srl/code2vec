@@ -165,6 +165,7 @@ class ModelBase(abc.ABC):
     @staticmethod
     def initialize_session_variables(sess):
         sess.run(tf.group(tf.global_variables_initializer(), tf.local_variables_initializer(), tf.tables_initializer()))
+        print('Initalized variables')
 
     def get_should_reuse_variables(self):
         if self.config.TRAIN_PATH:
