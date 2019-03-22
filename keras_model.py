@@ -1,7 +1,7 @@
 import tensorflow as tf
-import tensorflow.keras
-from tensorflow.keras.layers import *
-import tensorflow.keras.backend as K
+from tensorflow.python import keras
+from tensorflow.python.keras.layers import Input, Embedding, Concatenate, Dropout, TimeDistributed, Dense
+import tensorflow.python.keras.backend as K
 
 from path_context_reader import PathContextInputTensors, PathContextReader
 import numpy as np
@@ -9,16 +9,16 @@ import time
 import pickle
 from common import common, VocabType
 from keras_attention_layer import AttentionLayer
-from common import Config
+from config import Config
 from model_base import ModelBase
 
 
-class Model(ModelBase):
+class Code2VecModel(ModelBase):
     def __init__(self, config: Config):
-        super(Model, self).__init__(config)
+        super(Code2VecModel, self).__init__(config)
         K.set_session(self.sess)
 
-    def build_keras_model(self) -> tensorflow.keras.Model:
+    def build_keras_model(self) -> keras.Model:
         # Each input sample consists of a bag of x`MAX_CONTEXTS` tuples (source_terminal, path, target_terminal).
         # The valid mask indicates for each context whether it actually exists or it is just a padding.
         source_terminals_input = Input((self.config.MAX_CONTEXTS,))
@@ -53,10 +53,56 @@ class Model(ModelBase):
         out = Dense(self.target_word_vocab_size + 1, use_bias=False)(code_vectors)
 
         inputs = [source_terminals_input, paths_input, target_terminals_input, valid_mask]
-        model = tensorflow.keras.Model(inputs=inputs, outputs=out)
-        model.compile(loss='sparse_categorical_crossentropy', optimizer='adam')
+        model = keras.Model(inputs=inputs, outputs=out)
+        model.compile(loss='sparse_categorical_crossentropy', optimizer='adam',
+                      metrics=[self.target_word_evaluation_metric])
 
         return model
+
+    def make_target_word_prediction_graph(self, y_pred):
+        top_k_pred_indices = tf.cast(tf.nn.top_k(y_pred, k=self.topk).indices, dtype=tf.int64)
+        predicted_target_words_strings = self.index_to_target_word_table.lookup(top_k_pred_indices)
+
+        # filter `predicted_target_words_strings` for `common.noSuchWord` and illegals.
+        not_nosuch_predicted_target_words_mask = tf.not_equal(top_k_pred_indices,
+                                                              common.SpecialDictWords.NoSuchWord.value)
+        legal_predicted_target_words_mask = tf.strings.regex_full_match(predicted_target_words_strings,
+                                                                        r'^[a-zA-Z\|]+$')
+        legal_predicted_target_words_mask = tf.logical_and(legal_predicted_target_words_mask,
+                                                           not_nosuch_predicted_target_words_mask)
+
+        # the first legal predicted word is our prediction
+        first_legal_predicted_target_word_mask = common.tf_get_first_true(legal_predicted_target_words_mask)
+        first_legal_predicted_target_word_idx = tf.where(first_legal_predicted_target_word_mask)
+        first_legal_predicted_word_string = tf.gather_nd(predicted_target_words_strings,
+                                                         first_legal_predicted_target_word_idx)
+
+        prediction = tf.reshape(first_legal_predicted_word_string, [-1])
+
+        return prediction
+
+    def target_word_evaluation_metric(self, true_target_word_index, y_pred):
+        true_target_word_index = tf.reshape(tf.cast(true_target_word_index, dtype=tf.int64), [-1])
+        true_target_word_string = self.index_to_target_word_table.lookup(true_target_word_index)
+        prediction = self.make_target_word_prediction_graph(y_pred)
+
+        true_target_subwords = tf.string_split(true_target_word_string, delimiter=' | ')
+        prediction_subwords = tf.string_split(prediction, delimiter=' | ')
+
+        subwords_intersection = tf.sets.intersection(true_target_subwords, prediction_subwords)
+
+        true_positive = tf.cast(tf.sets.size(subwords_intersection), dtype=tf.float32)
+        false_positive = tf.cast(tf.sets.size(tf.sets.difference(prediction_subwords, true_target_subwords)), dtype=tf.float32)
+        false_negative = tf.cast(tf.sets.size(tf.sets.difference(true_target_subwords, prediction_subwords)), dtype=tf.float32)
+
+        precision = true_positive / (true_positive + false_positive)
+        recall = true_positive / (true_positive + false_negative)
+        f1 = 2 * tf.multiply(precision, recall) / (precision + recall + K.epsilon())
+        f1 = tf.where(tf.is_nan(f1), tf.zeros_like(f1), f1)
+
+        # measurements = tf.stack([precision, recall, f1], axis=1)
+
+        return f1
 
     def train(self):
         input_reader = PathContextReader(token_to_index=self.word_to_index,
@@ -74,9 +120,7 @@ class Model(ModelBase):
         self.initialize_session_variables(self.sess)
         print('Initalized variables')
 
-        input_reader.reset(self.sess)
-        model.fit(
-            input_reader.iterator, steps_per_epoch=self.config.steps_per_epoch, epochs=self.config.NUM_EPOCHS)
+        model.fit(input_reader.dataset, steps_per_epoch=self.config.steps_per_epoch, epochs=self.config.NUM_EPOCHS)
 
     def evaluate(self):
         raise NotImplemented()  # TODO: implement!

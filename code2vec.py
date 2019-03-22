@@ -1,4 +1,5 @@
-from common import Config, VocabType
+from common import VocabType
+from config import Config
 from argparse import ArgumentParser
 from interactive_predict import InteractivePredictor
 from model_base import ModelBase
@@ -7,12 +8,12 @@ import sys
 
 def load_model_dynamically(config: Config) -> ModelBase:
     if config.DL_FRAMEWORK == 'tensorflow':
-        from tensorflow_model import Model
+        from tensorflow_model import Code2VecModel
     elif config.DL_FRAMEWORK == 'keras':
-        from keras_model import Model
+        from keras_model import Code2VecModel
     else:
         raise ValueError("config.DL_FRAMEWORK must be in {'tensorflow', 'keras'}.")
-    return Model(config)
+    return Code2VecModel(config)
 
 
 if __name__ == '__main__':

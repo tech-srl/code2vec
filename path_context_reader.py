@@ -1,10 +1,10 @@
 import tensorflow as tf
 from collections import namedtuple
 from typing import Dict, Tuple, NamedTuple
-from common import Config
+from config import Config
+from common import common
 
-no_such_word = 'NOSUCH'
-no_such_context = no_such_word + ',' + no_such_word + ',' + no_such_word
+NO_SUCH_CONTEXT = ','.join([common.SpecialDictWords.NoSuchWord.name] * 3)
 
 
 PathContextInputTensors__old = namedtuple('PathContextInputTensors',
@@ -42,50 +42,49 @@ class PathContextReader:
         self.batch_size = config.TEST_BATCH_SIZE if is_evaluating else min(config.BATCH_SIZE, config.NUM_EXAMPLES)
         self.config = config
         self.is_evaluating = is_evaluating
-        self.record_defaults = [[no_such_context]] * (self.config.MAX_CONTEXTS + 1)
+        self.record_defaults = [[NO_SUCH_CONTEXT]] * (self.config.MAX_CONTEXTS + 1)
 
         self.token_table = PathContextReader.get_token_table(token_to_index)
         self.target_table = PathContextReader.get_target_word_table(target_to_index)
         self.path_table = PathContextReader.get_path_table(path_to_index)
 
-        self.dataset = self.create_dataset_pipeline()
-        self.iterator = self.dataset.make_initializable_iterator()
-        self.iterator_initializer = self.iterator.initializer
+        self._dataset = self.create_dataset_pipeline()
 
     @classmethod
     def get_token_table(cls, token_to_index: Dict[str, int]):
         if cls.class_token_table is None:
-            cls.class_token_table = cls.initalize_hash_map(token_to_index, 0)
+            cls.class_token_table = cls.initalize_hash_map(
+                token_to_index, default_value=common.SpecialDictWords.NoSuchWord.value)
         return cls.class_token_table
 
     @classmethod
     def get_target_word_table(cls, target_to_index: Dict[str, int]):
         if cls.class_target_word_table is None:
-            cls.class_target_word_table = cls.initalize_hash_map(target_to_index, 0)
+            cls.class_target_word_table = cls.initalize_hash_map(
+                target_to_index, default_value=common.SpecialDictWords.NoSuchWord.value)
         return cls.class_target_word_table
 
     @classmethod
     def get_path_table(cls, path_to_index: Dict[str, int]):
         if cls.class_path_table is None:
-            cls.class_path_table = cls.initalize_hash_map(path_to_index, 0)
+            cls.class_path_table = cls.initalize_hash_map(
+                path_to_index, default_value=common.SpecialDictWords.NoSuchWord.value)
         return cls.class_path_table
 
     @classmethod
     def initalize_hash_map(cls, word_to_index: Dict[str, int], default_value: int):
         return tf.contrib.lookup.HashTable(
-            tf.contrib.lookup.KeyValueTensorInitializer(list(word_to_index.keys()), list(word_to_index.values()),
-                                                        key_dtype=tf.string,
-                                                        value_dtype=tf.int32), default_value)
+            tf.contrib.lookup.KeyValueTensorInitializer(
+                list(word_to_index.keys()), list(word_to_index.values()), key_dtype=tf.string, value_dtype=tf.int32),
+            default_value=tf.constant(default_value, dtype=tf.int32))
 
     def process_from_placeholder(self, row):
         parts = tf.io.decode_csv(row, record_defaults=self.record_defaults, field_delim=' ', use_quote_delim=False)
         return self.process_dataset(*parts)
 
-    def get_dataset(self):
-        return self.dataset
-
-    def reset(self, sess: tf.Session):
-        sess.run(self.iterator_initializer)
+    @property
+    def dataset(self):
+        return self._dataset
 
     def create_dataset_pipeline(self) -> tf.data.Dataset:
         dataset = tf.data.experimental.CsvDataset(
@@ -132,7 +131,8 @@ class PathContextReader:
 
         contexts_str = tf.stack(row_parts[1:(self.config.MAX_CONTEXTS + 1)], axis=0)
         split_contexts = tf.string_split(contexts_str, delimiter=',')
-        dense_split_contexts = tf.sparse_tensor_to_dense(split_contexts, default_value=no_such_word)
+        dense_split_contexts = tf.sparse_tensor_to_dense(split_contexts,
+                                                         default_value=common.SpecialDictWords.NoSuchWord.name)
 
         path_source_strings = tf.squeeze(tf.slice(dense_split_contexts, [0, 0], [self.config.MAX_CONTEXTS, 1]), axis=1)
         path_source_indices = self.token_table.lookup(path_source_strings)  # (max_contexts, )
