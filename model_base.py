@@ -5,7 +5,7 @@ import pickle
 import abc
 
 from common import common, VocabType
-from common import Config
+from config import Config
 
 
 class ModelBase(abc.ABC):
@@ -38,17 +38,18 @@ class ModelBase(abc.ABC):
             self.load_model(sess=None)
         else:
             self.word_to_index, self.index_to_word, self.word_vocab_size = \
-                common.load_vocab_from_dict(word_to_count, config.WORDS_VOCAB_SIZE, start_from=1)
+                common.load_vocab_from_dict(word_to_count, config.WORDS_VOCAB_SIZE,
+                                            start_from=common.SpecialDictWords.index_to_start_dict_from())
             print('Loaded word vocab. size: %d' % self.word_vocab_size)
 
             self.target_word_to_index, self.index_to_target_word, self.target_word_vocab_size = \
                 common.load_vocab_from_dict(target_to_count, config.TARGET_VOCAB_SIZE,
-                                            start_from=1)
+                                            start_from=common.SpecialDictWords.index_to_start_dict_from())
             print('Loaded target word vocab. size: %d' % self.target_word_vocab_size)
 
             self.path_to_index, self.index_to_path, self.path_vocab_size = \
                 common.load_vocab_from_dict(path_to_count, config.PATHS_VOCAB_SIZE,
-                                            start_from=1)
+                                            start_from=common.SpecialDictWords.index_to_start_dict_from())
             print('Loaded paths vocab. size: %d' % self.path_vocab_size)
 
         self.create_index_to_target_word_map()
@@ -58,7 +59,7 @@ class ModelBase(abc.ABC):
             tf.contrib.lookup.KeyValueTensorInitializer(list(self.index_to_target_word.keys()),
                                                         list(self.index_to_target_word.values()),
                                                         key_dtype=tf.int64, value_dtype=tf.string),
-            default_value=tf.constant(common.noSuchWord, dtype=tf.string))
+            default_value=tf.constant(common.SpecialDictWords.NoSuchWord.name, dtype=tf.string))
 
     def close_session(self):
         self.sess.close()
