@@ -9,7 +9,6 @@ from config import Config
 
 
 class ModelBase(abc.ABC):
-    topk = 10  # TODO: consider exporting to Config or to method param with default value.
     num_batches_to_log = 100  # TODO: consider exporting to Config or to method param with default value.
 
     def __init__(self, config: Config):
@@ -124,7 +123,7 @@ class ModelBase(abc.ABC):
                 normalized_suggestion = common.normalize_word(predicted_word)
                 if normalized_original_name == normalized_suggestion:
                     output_file.write('\t\t predicted correctly at rank: ' + str(i + 1) + '\n')
-                    for j in range(i, self.topk):
+                    for j in range(i, self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION):
                         num_correct_predictions[j] += 1
                     break
             if not predicted_something:

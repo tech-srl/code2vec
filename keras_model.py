@@ -52,15 +52,16 @@ class Code2VecModel(ModelBase):
         code_vectors = AttentionLayer()(context_after_dense, mask=valid_mask)
 
         # "Decode": Now we use another dense layer to get the target word embedding from each code vector.
-        final_softmax_out = Dense(self.target_word_vocab_size + 1, use_bias=False, activation='softmax')(code_vectors)
+        final_softmax_out = Dense(self.target_word_vocab_size + 1, use_bias=False,
+                                  activation='softmax', name='final_softmax_out')(code_vectors)
 
         target_word_prediction = WordPredictionLayer(
-            self.topk,
+            self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION,
             self.index_to_target_word_table,
             predicted_words_filters=[
                 lambda word_indices, _: tf.not_equal(word_indices, common.SpecialDictWords.NoSuchWord.value),
                 lambda _, word_strings: tf.strings.regex_full_match(word_strings, r'^[a-zA-Z\|]+$')
-            ])(final_softmax_out)
+            ], name='target_word_prediction')(final_softmax_out)
 
         # TODO: what to do with the output `target_word_prediction`? consider create a predict-only model.
 
@@ -103,6 +104,7 @@ class Code2VecModel(ModelBase):
         raise NotImplemented()  # TODO: implement!
 
     def load_model(self, sess):
+        # model = load_model('my_model.h5', custom_objects={'AttentionLayer': AttentionLayer})
         raise NotImplemented()  # TODO: implement!
 
     def save_word2vec_format(self, dest, source):

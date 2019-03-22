@@ -20,6 +20,7 @@ class Config:
         config.EMBEDDINGS_SIZE = 128
         config.MAX_TO_KEEP = 10
         config.DROPOUT_KEEP_RATE = 0.75
+        config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION = 10
 
         config.READER_NUM_PARALLEL_BATCHES = 1  # cpu cores [for tf.contrib.data.map_and_batch()]
         config.SHUFFLE_BUFFER_SIZE = 10000
@@ -50,6 +51,7 @@ class Config:
         self.EMBEDDINGS_SIZE: int = 0
         self.MAX_TO_KEEP: int = 0
         self.DROPOUT_KEEP_RATE: float = 0
+        self.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION: int = 0
 
         self.READER_NUM_PARALLEL_BATCHES: int = 0
         self.SHUFFLE_BUFFER_SIZE: int = 0
