@@ -77,12 +77,9 @@ class Code2VecModel(ModelBase):
         inputs = [source_terminals_input, paths_input, target_terminals_input, valid_mask]
         model = keras.Model(inputs=inputs, outputs=[y_hat, target_word_prediction])
         metrics = {'y_hat': [
-            WordsSubtokenPrecisionMetric(
-                index_to_word_table=self.index_to_target_word_table, predicted_word_output=target_word_prediction),
-            WordsSubtokenRecallMetric(
-                index_to_word_table=self.index_to_target_word_table, predicted_word_output=target_word_prediction),
-            WordsSubtokenF1Metric(
-                index_to_word_table=self.index_to_target_word_table, predicted_word_output=target_word_prediction)
+            WordsSubtokenPrecisionMetric(self.index_to_target_word_table, target_word_prediction, name='precision'),
+            WordsSubtokenRecallMetric(self.index_to_target_word_table, target_word_prediction, name='recall'),
+            WordsSubtokenF1Metric(self.index_to_target_word_table, target_word_prediction, name='f1')
         ]}
         model.compile(loss={'y_hat': 'sparse_categorical_crossentropy'}, optimizer='adam', metrics=metrics)
         return model
