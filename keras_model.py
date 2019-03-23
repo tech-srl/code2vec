@@ -91,28 +91,24 @@ class Code2VecModel(ModelBase):
         keras_model.compile(loss={'y_hat': 'sparse_categorical_crossentropy'}, optimizer='adam', metrics=metrics)
         return keras_model
 
-    def train(self):
-        # initialize the train input pipeline reader
-        train_data_input_reader = PathContextReader(
-            token_to_index=self.word_to_index,
-            path_to_index=self.path_to_index,
-            target_to_index=self.target_word_to_index,
-            config=self.config,
-            model_input_tensors_former=_KerasModelInputTensorsFormer())
-
-        # initialize the validation input pipeline reader
-        val_data_input_reader = PathContextReader(
+    def _create_data_reader(self, is_evaluating: bool = False):
+        return PathContextReader(
             token_to_index=self.word_to_index,
             path_to_index=self.path_to_index,
             target_to_index=self.target_word_to_index,
             config=self.config,
             model_input_tensors_former=_KerasModelInputTensorsFormer(),
-            is_evaluating=True)
+            is_evaluating=is_evaluating)
+
+    def train(self):
+        # initialize the input pipeline readers
+        train_data_input_reader = self._create_data_reader(is_evaluating=False)
+        val_data_input_reader = self._create_data_reader(is_evaluating=True)
 
         # TODO: set max_to_keep=self.config.MAX_TO_KEEP
         # TODO: set the correct `monitor` quantity (example: monitor='val_acc', mode='max')
         checkpoint = ModelCheckpoint(
-            self.config.SAVE_PATH + '_epoch{epoch:08d}',
+            self.config.SAVE_PATH + '_epoch{epoch}',
             verbose=1, save_best_only=False, save_weights_only=True,
             period=self.config.SAVE_EVERY_EPOCHS)
 
@@ -120,9 +116,9 @@ class Code2VecModel(ModelBase):
 
         self.keras_model.fit(
             train_data_input_reader.dataset,
-            steps_per_epoch=2,  #self.config.train_steps_per_epoch,
+            steps_per_epoch=self.config.train_steps_per_epoch,
             epochs=self.config.NUM_EPOCHS,
-            validation_data=val_data_input_reader.dataset,
+            # validation_data=val_data_input_reader.dataset,      # TODO: must set `validation_steps`
             # validation_steps=self.config.test_steps_per_epoch,  # FIXME: how to obtain #VALIDATION_EXAMPLES?
             callbacks=[checkpoint])
 
