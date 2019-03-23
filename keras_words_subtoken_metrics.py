@@ -5,10 +5,13 @@ import tensorflow.python.keras.backend as K
 from tensorflow.python.keras.backend import init_ops, math_ops, control_flow_ops, state_ops
 from tensorflow.python.ops import string_ops
 import abc
+from typing import Optional
 
 
 class WordsSubtokenMetricBase(Metric):
-    def __init__(self, index_to_word_table: tf.contrib.lookup.HashTable, predicted_word_output,
+    def __init__(self,
+                 index_to_word_table: Optional[tf.contrib.lookup.HashTable] = None,
+                 predicted_word_output=None,
                  subtokens_delimiter: str = ' | ', name=None, dtype=None):
         super(WordsSubtokenMetricBase, self).__init__(name=None, dtype=None)
         self.tp = self.add_weight('true_positives', shape=(), initializer=init_ops.zeros_initializer)
@@ -18,17 +21,24 @@ class WordsSubtokenMetricBase(Metric):
         self.predicted_word_output = predicted_word_output
         self.subtokens_delimiter = subtokens_delimiter
 
-    def update_state(self, true_target_word_index, y_pred, sample_weight=None):
+    def _get_true_target_word_string(self, true_target_word):
+        if self.index_to_word_table is None:
+            return true_target_word
+        true_target_word_index = tf.cast(true_target_word, dtype=self.index_to_word_table.key_dtype)
+        return self.index_to_word_table.lookup(true_target_word_index)
+
+    def update_state(self, true_target_word, y_pred, sample_weight=None):
         """Accumulates true positive, false positive and false negative statistics."""
         if sample_weight is not None:
             raise NotImplemented("WordsSubtokenMetricBase with non-None `sample_weight` is not implemented.")
 
-        true_target_word_index = tf.reshape(
-            tf.cast(true_target_word_index, dtype=self.index_to_word_table.key_dtype), [-1])
-        true_target_word_string = self.index_to_word_table.lookup(true_target_word_index)
+        predicted_word_output = y_pred if self.predicted_word_output is None else self.predicted_word_output
+
+        true_target_word_string = self._get_true_target_word_string(true_target_word)
+        true_target_word_string = tf.reshape(true_target_word_string, [-1])
 
         true_target_subwords = string_ops.string_split(true_target_word_string, delimiter=self.subtokens_delimiter)
-        prediction_subwords = string_ops.string_split(self.predicted_word_output, delimiter=self.subtokens_delimiter)
+        prediction_subwords = string_ops.string_split(predicted_word_output, delimiter=self.subtokens_delimiter)
 
         batch_true_positive = math_ops.cast(
             tf.sets.size(tf.sets.intersection(true_target_subwords, prediction_subwords)), dtype=tf.float32)

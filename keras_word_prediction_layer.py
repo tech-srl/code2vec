@@ -16,6 +16,7 @@ class WordPredictionLayer(Layer):
                  predicted_words_filters: Optional[List[FilterType]] = None,
                  **kwargs):
         kwargs['dtype'] = tf.string
+        kwargs['trainable'] = False
         super(WordPredictionLayer, self).__init__(**kwargs)
         self.top_k = top_k
         self.index_to_word_table = index_to_word_table
@@ -25,6 +26,7 @@ class WordPredictionLayer(Layer):
         if len(input_shape) != 2:
             raise ValueError("Input shape for WordPredictionLayer should be of 2 dimension.")
         super(WordPredictionLayer, self).build(input_shape)
+        self.trainable = False
 
     def call(self, y_pred, **kwargs):
         y_pred.shape.assert_has_rank(2)

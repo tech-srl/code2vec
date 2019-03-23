@@ -1,8 +1,9 @@
 import tensorflow as tf
 from collections import namedtuple
-from typing import Dict, Tuple, NamedTuple
+from typing import Dict, Tuple, NamedTuple, Union, Optional, Type
 from config import Config
 from common import common
+import abc
 
 NO_SUCH_CONTEXT = ','.join([common.SpecialDictWords.NoSuchWord.name] * 3)
 
@@ -12,23 +13,23 @@ PathContextInputTensors__old = namedtuple('PathContextInputTensors',
      'valid_mask', 'path_source_strings', 'path_strings', 'path_target_strings'])
 
 
-class PathContextInputTensors(NamedTuple):
-    target_label: tf.Tensor
+class ReaderInputTensors(NamedTuple):
     path_source_indices: tf.Tensor
     path_indices: tf.Tensor
     path_target_indices: tf.Tensor
     context_valid_mask: tf.Tensor
-    # path_source_strings: tf.Tensor
-    # path_strings: tf.Tensor
-    # path_target_strings: tf.Tensor
+    target_index: Optional[tf.Tensor] = None
+    target_string: Optional[tf.Tensor] = None
 
-    def to_tuple(self):
-        return tuple(self)[1:], self.target_label
 
-    @staticmethod
-    def from_tuple(row):
-        inputs = row[0]
-        return PathContextInputTensors(row[1], *inputs)
+class ModelInputTensorsFormer(abc.ABC):
+    @abc.abstractmethod
+    def to_model_input_form(self, input_tensors: ReaderInputTensors):
+        ...
+
+    @abc.abstractmethod
+    def from_model_input_form(self, input_row) -> ReaderInputTensors:
+        ...
 
 
 class PathContextReader:
@@ -36,11 +37,17 @@ class PathContextReader:
     class_target_word_table = None
     class_path_table = None
 
-    def __init__(self, token_to_index: Dict[str, int], target_to_index: Dict[str, int], path_to_index: Dict[str, int],
-                 config: Config, is_evaluating: bool = False):
+    def __init__(self,
+                 token_to_index: Dict[str, int],
+                 target_to_index: Dict[str, int],
+                 path_to_index: Dict[str, int],
+                 config: Config,
+                 model_input_tensors_former: ModelInputTensorsFormer,
+                 is_evaluating: bool = False):
         self.file_path = config.TEST_PATH if is_evaluating else (config.TRAIN_PATH + '.train.c2v')
         self.batch_size = config.TEST_BATCH_SIZE if is_evaluating else min(config.BATCH_SIZE, config.NUM_EXAMPLES)
         self.config = config
+        self.model_input_tensors_former = model_input_tensors_former
         self.is_evaluating = is_evaluating
         self.record_defaults = [[NO_SUCH_CONTEXT]] * (self.config.MAX_CONTEXTS + 1)
 
@@ -103,7 +110,7 @@ class PathContextReader:
         return dataset
 
     def filter_dataset(self, *row_parts) -> tf.bool:
-        row_parts = PathContextInputTensors.from_tuple(row_parts)
+        row_parts = self.model_input_tensors_former.from_model_input_form(row_parts)
 
         assert all(tensor.shape == (self.config.MAX_CONTEXTS,) for tensor in
                    {row_parts.path_source_indices, row_parts.path_indices,
@@ -119,15 +126,16 @@ class PathContextReader:
         if self.is_evaluating:
             cond = any_contexts_is_valid  # scalar
         else:  # training
-            word_is_valid = tf.greater(row_parts.target_label, 0)  # scalar
+            word_is_valid = tf.greater(row_parts.target_index, common.SpecialDictWords.NoSuchWord.value)  # scalar
             cond = tf.logical_and(word_is_valid, any_contexts_is_valid)  # scalar
 
         return cond  # scalar
 
-    def process_dataset(self, *row_parts) -> Tuple[tf.Tensor, ...]:
+    def process_dataset(self, *row_parts) -> Tuple[Union[tf.Tensor, Tuple[tf.Tensor, ...], Dict[str, tf.Tensor]], ...]:
         row_parts = list(row_parts)
         target_str = row_parts[0]
-        target_word_label = target_str if self.is_evaluating else self.target_table.lookup(target_str)
+        target_index = self.target_table.lookup(target_str)
+        # target_word_label = target_str if self.is_evaluating else target_index
 
         contexts_str = tf.stack(row_parts[1:(self.config.MAX_CONTEXTS + 1)], axis=0)
         split_contexts = tf.string_split(contexts_str, delimiter=',')
@@ -151,13 +159,13 @@ class PathContextReader:
         assert all(tensor.shape == (self.config.MAX_CONTEXTS,) for tensor in
                    {path_source_indices, path_indices, path_target_indices, context_valid_mask})
 
-        return PathContextInputTensors(
-            target_label=target_word_label,
+        tensors = ReaderInputTensors(
             path_source_indices=path_source_indices,
             path_indices=path_indices,
             path_target_indices=path_target_indices,
             context_valid_mask=context_valid_mask,
-            # path_source_strings=path_source_strings,
-            # path_strings=path_strings,
-            # path_target_strings=path_target_strings
-        ).to_tuple()
+            target_index=target_index,
+            target_string=target_str
+        )
+
+        return self.model_input_tensors_former.to_model_input_form(tensors)

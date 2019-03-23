@@ -3,7 +3,7 @@ from tensorflow.python import keras
 from tensorflow.python.keras.layers import Input, Embedding, Concatenate, Dropout, TimeDistributed, Dense
 import tensorflow.python.keras.backend as K
 
-from path_context_reader import PathContextInputTensors, PathContextReader
+from path_context_reader import PathContextReader, ModelInputTensorsFormer, ReaderInputTensors
 import numpy as np
 import time
 import pickle
@@ -13,6 +13,18 @@ from keras_word_prediction_layer import WordPredictionLayer
 from keras_words_subtoken_metrics import WordsSubtokenPrecisionMetric, WordsSubtokenRecallMetric, WordsSubtokenF1Metric
 from config import Config
 from model_base import ModelBase
+
+
+class _KerasModelInputTensorsFormer(ModelInputTensorsFormer):
+    def to_model_input_form(self, input_tensors: ReaderInputTensors):
+        inputs = tuple(input_tensors)[:4]
+        targets = {'y_hat': input_tensors.target_index}
+        return inputs, targets
+
+    def from_model_input_form(self, input_row) -> ReaderInputTensors:
+        inputs = input_row[0]
+        targets = {'target_index': input_row[1]['y_hat']}
+        return ReaderInputTensors(*inputs, **targets)
 
 
 class Code2VecModel(ModelBase):
@@ -52,8 +64,7 @@ class Code2VecModel(ModelBase):
         code_vectors = AttentionLayer()(context_after_dense, mask=valid_mask)
 
         # "Decode": Now we use another dense layer to get the target word embedding from each code vector.
-        final_softmax_out = Dense(self.target_word_vocab_size + 1, use_bias=False,
-                                  activation='softmax', name='final_softmax_out')(code_vectors)
+        y_hat = Dense(self.target_word_vocab_size + 1, use_bias=False, activation='softmax', name='y_hat')(code_vectors)
 
         target_word_prediction = WordPredictionLayer(
             self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION,
@@ -61,18 +72,19 @@ class Code2VecModel(ModelBase):
             predicted_words_filters=[
                 lambda word_indices, _: tf.not_equal(word_indices, common.SpecialDictWords.NoSuchWord.value),
                 lambda _, word_strings: tf.strings.regex_full_match(word_strings, r'^[a-zA-Z\|]+$')
-            ], name='target_word_prediction')(final_softmax_out)
-
-        # TODO: what to do with the output `target_word_prediction`? consider create a predict-only model.
+            ], name='target_word_prediction')(y_hat)
 
         inputs = [source_terminals_input, paths_input, target_terminals_input, valid_mask]
-        model = keras.Model(inputs=inputs, outputs=final_softmax_out)
-        metrics = [
-            WordsSubtokenPrecisionMetric(self.index_to_target_word_table, target_word_prediction),
-            WordsSubtokenRecallMetric(self.index_to_target_word_table, target_word_prediction),
-            WordsSubtokenF1Metric(self.index_to_target_word_table, target_word_prediction)
-        ]
-        model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=metrics)
+        model = keras.Model(inputs=inputs, outputs=[y_hat, target_word_prediction])
+        metrics = {'y_hat': [
+            WordsSubtokenPrecisionMetric(
+                index_to_word_table=self.index_to_target_word_table, predicted_word_output=target_word_prediction),
+            WordsSubtokenRecallMetric(
+                index_to_word_table=self.index_to_target_word_table, predicted_word_output=target_word_prediction),
+            WordsSubtokenF1Metric(
+                index_to_word_table=self.index_to_target_word_table, predicted_word_output=target_word_prediction)
+        ]}
+        model.compile(loss={'y_hat': 'sparse_categorical_crossentropy'}, optimizer='adam', metrics=metrics)
         return model
 
     def train(self):
@@ -80,7 +92,8 @@ class Code2VecModel(ModelBase):
             token_to_index=self.word_to_index,
             path_to_index=self.path_to_index,
             target_to_index=self.target_word_to_index,
-            config=self.config)
+            config=self.config,
+            model_input_tensors_former=_KerasModelInputTensorsFormer())
 
         keras_model = self._build_keras_model()
         print('Keras model built')
@@ -91,7 +104,9 @@ class Code2VecModel(ModelBase):
 
         self.initialize_session_variables(self.sess)
 
-        keras_model.fit(train_data_input_reader.dataset, steps_per_epoch=self.config.steps_per_epoch, epochs=self.config.NUM_EPOCHS)
+        keras_model.fit(train_data_input_reader.dataset,
+                        steps_per_epoch=self.config.steps_per_epoch,
+                        epochs=self.config.NUM_EPOCHS)
 
     def evaluate(self):
         raise NotImplemented()  # TODO: implement!
