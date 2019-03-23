@@ -64,7 +64,7 @@ class Code2VecModel(ModelBase):
         )(context_embedded)
 
         # The final code vectors are received by applying attention to the "densed" context vectors.
-        code_vectors = AttentionLayer()(context_after_dense, mask=valid_mask)
+        code_vectors = AttentionLayer(name='code_vectors')(context_after_dense, mask=valid_mask)
 
         # "Decode": Now we use another dense layer to get the target word embedding from each code vector.
         y_hat = Dense(self.target_word_vocab_size + 1, use_bias=False, activation='softmax', name='y_hat')(code_vectors)
@@ -82,8 +82,9 @@ class Code2VecModel(ModelBase):
 
         # Wrap the layers into a Keras model, using our subtoken-metrics and the CE loss.
         inputs = [source_terminals_input, paths_input, target_terminals_input, valid_mask]
-        keras_model = keras.Model(inputs=inputs, outputs=[y_hat, target_word_prediction])
+        keras_model = keras.Model(inputs=inputs, outputs=[y_hat, target_word_prediction, code_vectors])
         metrics = {'y_hat': [
+            'accuracy',  # TODO: implement top-k accuracy metric
             WordsSubtokenPrecisionMetric(self.index_to_target_word_table, target_word_prediction, name='precision'),
             WordsSubtokenRecallMetric(self.index_to_target_word_table, target_word_prediction, name='recall'),
             WordsSubtokenF1Metric(self.index_to_target_word_table, target_word_prediction, name='f1')
@@ -123,11 +124,14 @@ class Code2VecModel(ModelBase):
             callbacks=[checkpoint])
 
     def evaluate(self):
-        raise NotImplemented()  # TODO: implement!
+        val_data_input_reader = self._create_data_reader(is_evaluating=True)
+        self.initialize_session_variables(self.sess)
+        return self.keras_model.evaluate(val_data_input_reader.dataset, steps=self.config.test_steps_per_epoch)
 
     def predict(self, predict_data_lines):
-        # TODO: make `predict()` a base method, and add a new abstract methods for the actual framework-dependant.
-        raise NotImplemented()  # TODO: implement!
+        val_data_input_reader = self._create_data_reader(is_evaluating=True)
+        self.initialize_session_variables(self.sess)
+        return self.keras_model.predict(val_data_input_reader.dataset, steps=self.config.test_steps_per_epoch)
 
     def save_model(self, sess, path):
         self.keras_model.save_weights(self.config.SAVE_PATH)

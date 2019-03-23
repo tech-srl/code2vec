@@ -67,7 +67,12 @@ class Config:
 
         # Automatically filled by `ModelBase.__init__()`.
         self.NUM_TRAIN_EXAMPLES: int = 0
+        self.NUM_TEST_EXAMPLES: int = 0   # TODO: really set it in `ModelBase.__init__()`!
 
     @property
     def train_steps_per_epoch(self) -> int:
         return ceil(self.NUM_TRAIN_EXAMPLES / self.TRAIN_BATCH_SIZE)
+
+    @property
+    def test_steps_per_epoch(self) -> int:
+        return ceil(self.NUM_TEST_EXAMPLES / self.TEST_BATCH_SIZE)
