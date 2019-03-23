@@ -2,6 +2,7 @@ import tensorflow as tf
 from tensorflow.python import keras
 from tensorflow.python.keras.layers import Input, Embedding, Concatenate, Dropout, TimeDistributed, Dense
 import tensorflow.python.keras.backend as K
+from tensorflow.python.keras.callbacks import ModelCheckpoint
 
 from path_context_reader import PathContextReader, ModelInputTensorsFormer, ReaderInputTensors
 import numpy as np
@@ -31,6 +32,8 @@ class Code2VecModel(ModelBase):
     def __init__(self, config: Config):
         super(Code2VecModel, self).__init__(config)
         K.set_session(self.sess)
+        self.keras_model = self._build_keras_model()
+        print('Keras model built')
 
     def _build_keras_model(self) -> keras.Model:
         # Each input sample consists of a bag of x`MAX_CONTEXTS` tuples (source_terminal, path, target_terminal).
@@ -66,6 +69,9 @@ class Code2VecModel(ModelBase):
         # "Decode": Now we use another dense layer to get the target word embedding from each code vector.
         y_hat = Dense(self.target_word_vocab_size + 1, use_bias=False, activation='softmax', name='y_hat')(code_vectors)
 
+        # Actual target word prediction (as string). Used as a second output layer.
+        # `predict()` method just have to return the output of this layer.
+        # Also used for the evaluation metrics calculations.
         target_word_prediction = WordPredictionLayer(
             self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION,
             self.index_to_target_word_table,
@@ -74,17 +80,19 @@ class Code2VecModel(ModelBase):
                 lambda _, word_strings: tf.strings.regex_full_match(word_strings, r'^[a-zA-Z\|]+$')
             ], name='target_word_prediction')(y_hat)
 
+        # Wrap the layers into a Keras model, using our subtoken-metrics and the CE loss.
         inputs = [source_terminals_input, paths_input, target_terminals_input, valid_mask]
-        model = keras.Model(inputs=inputs, outputs=[y_hat, target_word_prediction])
+        keras_model = keras.Model(inputs=inputs, outputs=[y_hat, target_word_prediction])
         metrics = {'y_hat': [
             WordsSubtokenPrecisionMetric(self.index_to_target_word_table, target_word_prediction, name='precision'),
             WordsSubtokenRecallMetric(self.index_to_target_word_table, target_word_prediction, name='recall'),
             WordsSubtokenF1Metric(self.index_to_target_word_table, target_word_prediction, name='f1')
         ]}
-        model.compile(loss={'y_hat': 'sparse_categorical_crossentropy'}, optimizer='adam', metrics=metrics)
-        return model
+        keras_model.compile(loss={'y_hat': 'sparse_categorical_crossentropy'}, optimizer='adam', metrics=metrics)
+        return keras_model
 
     def train(self):
+        # initialize the train input pipeline reader
         train_data_input_reader = PathContextReader(
             token_to_index=self.word_to_index,
             path_to_index=self.path_to_index,
@@ -92,18 +100,31 @@ class Code2VecModel(ModelBase):
             config=self.config,
             model_input_tensors_former=_KerasModelInputTensorsFormer())
 
-        keras_model = self._build_keras_model()
-        print('Keras model built')
+        # initialize the validation input pipeline reader
+        val_data_input_reader = PathContextReader(
+            token_to_index=self.word_to_index,
+            path_to_index=self.path_to_index,
+            target_to_index=self.target_word_to_index,
+            config=self.config,
+            model_input_tensors_former=_KerasModelInputTensorsFormer(),
+            is_evaluating=True)
 
-        # TODO: set keras model saver [max_to_keep=self.config.MAX_TO_KEEP]
-
-        # TODO: initialize the evaluation reader (and pass to model.fit() call)
+        # TODO: set max_to_keep=self.config.MAX_TO_KEEP
+        # TODO: set the correct `monitor` quantity (example: monitor='val_acc', mode='max')
+        checkpoint = ModelCheckpoint(
+            self.config.SAVE_PATH + '_epoch{epoch:08d}',
+            verbose=1, save_best_only=False, save_weights_only=True,
+            period=self.config.SAVE_EVERY_EPOCHS)
 
         self.initialize_session_variables(self.sess)
 
-        keras_model.fit(train_data_input_reader.dataset,
-                        steps_per_epoch=self.config.steps_per_epoch,
-                        epochs=self.config.NUM_EPOCHS)
+        self.keras_model.fit(
+            train_data_input_reader.dataset,
+            steps_per_epoch=2,  #self.config.train_steps_per_epoch,
+            epochs=self.config.NUM_EPOCHS,
+            validation_data=val_data_input_reader.dataset,
+            # validation_steps=self.config.test_steps_per_epoch,  # FIXME: how to obtain #VALIDATION_EXAMPLES?
+            callbacks=[checkpoint])
 
     def evaluate(self):
         raise NotImplemented()  # TODO: implement!
@@ -113,11 +134,10 @@ class Code2VecModel(ModelBase):
         raise NotImplemented()  # TODO: implement!
 
     def save_model(self, sess, path):
-        raise NotImplemented()  # TODO: implement!
+        self.keras_model.save_weights(self.config.SAVE_PATH)
 
     def load_model(self, sess):
-        # model = load_model('my_model.h5', custom_objects={'AttentionLayer': AttentionLayer})
-        raise NotImplemented()  # TODO: implement!
+        self.keras_model.load_weights(self.config.LOAD_PATH)
 
     def save_word2vec_format(self, dest, source):
         raise NotImplemented()  # TODO: implement!

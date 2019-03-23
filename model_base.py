@@ -30,7 +30,7 @@ class ModelBase(abc.ABC):
                 path_to_count = pickle.load(file)
                 target_to_count = pickle.load(file)
                 num_training_examples = pickle.load(file)
-                self.config.NUM_EXAMPLES = num_training_examples
+                self.config.NUM_TRAIN_EXAMPLES = num_training_examples
                 print('Dictionaries loaded.')
 
         if config.LOAD_PATH:
@@ -69,9 +69,9 @@ class ModelBase(abc.ABC):
 
     def trace(self, sum_loss, batch_num, multi_batch_start_time):
         multi_batch_elapsed = time.time() - multi_batch_start_time
-        avg_loss = sum_loss / (self.num_batches_to_log * self.config.BATCH_SIZE)
+        avg_loss = sum_loss / (self.num_batches_to_log * self.config.TRAIN_BATCH_SIZE)
         print('Average loss at batch %d: %f, \tthroughput: %d samples/sec' % (batch_num, avg_loss,
-                                                                              self.config.BATCH_SIZE * self.num_batches_to_log / (
+                                                                              self.config.TRAIN_BATCH_SIZE * self.num_batches_to_log / (
                                                                                   multi_batch_elapsed if multi_batch_elapsed > 0 else 1)))
 
     @abc.abstractmethod

@@ -45,7 +45,7 @@ class PathContextReader:
                  model_input_tensors_former: ModelInputTensorsFormer,
                  is_evaluating: bool = False):
         self.file_path = config.TEST_PATH if is_evaluating else (config.TRAIN_PATH + '.train.c2v')
-        self.batch_size = config.TEST_BATCH_SIZE if is_evaluating else min(config.BATCH_SIZE, config.NUM_EXAMPLES)
+        self.batch_size = config.TEST_BATCH_SIZE if is_evaluating else min(config.TRAIN_BATCH_SIZE, config.NUM_TRAIN_EXAMPLES)
         self.config = config
         self.model_input_tensors_former = model_input_tensors_former
         self.is_evaluating = is_evaluating

@@ -8,8 +8,8 @@ class Config:
         config.DL_FRAMEWORK = 'keras'
         config.NUM_EPOCHS = 20
         config.SAVE_EVERY_EPOCHS = 1
-        config.BATCH_SIZE = 1024
-        config.TEST_BATCH_SIZE = config.BATCH_SIZE
+        config.TRAIN_BATCH_SIZE = 1024
+        config.TEST_BATCH_SIZE = config.TRAIN_BATCH_SIZE
         config.READING_BATCH_SIZE = 1300 * 4
         config.NUM_BATCHING_THREADS = 2
         config.BATCH_QUEUE_SIZE = 300000
@@ -39,7 +39,7 @@ class Config:
         self.DL_FRAMEWORK: str = ''  # in {'keras', 'tensorflow'}
         self.NUM_EPOCHS: int = 0
         self.SAVE_EVERY_EPOCHS: int = 0
-        self.BATCH_SIZE: int = 0
+        self.TRAIN_BATCH_SIZE: int = 0
         self.TEST_BATCH_SIZE: int = 0
         self.READING_BATCH_SIZE: int = 0
         self.NUM_BATCHING_THREADS: int = 0
@@ -66,8 +66,8 @@ class Config:
         self.EXPORT_CODE_VECTORS: bool = False
 
         # Automatically filled by `ModelBase.__init__()`.
-        self.NUM_EXAMPLES: int = 0
+        self.NUM_TRAIN_EXAMPLES: int = 0
 
     @property
-    def steps_per_epoch(self) -> int:
-        return ceil(self.NUM_EXAMPLES / self.BATCH_SIZE)
+    def train_steps_per_epoch(self) -> int:
+        return ceil(self.NUM_TRAIN_EXAMPLES / self.TRAIN_BATCH_SIZE)
