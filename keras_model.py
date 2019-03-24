@@ -3,12 +3,14 @@ from tensorflow.python import keras
 from tensorflow.python.keras.layers import Input, Embedding, Concatenate, Dropout, TimeDistributed, Dense
 import tensorflow.python.keras.backend as K
 from tensorflow.python.keras.callbacks import ModelCheckpoint
+from tensorflow.python.keras.metrics import sparse_top_k_categorical_accuracy
 
 from path_context_reader import PathContextReader, ModelInputTensorsFormer, ReaderInputTensors
 import numpy as np
 import time
 import pickle
-from common import common, VocabType
+from functools import partial
+from common import common, VocabType, SpecialDictWords
 from keras_attention_layer import AttentionLayer
 from keras_word_prediction_layer import WordPredictionLayer
 from keras_words_subtoken_metrics import WordsSubtokenPrecisionMetric, WordsSubtokenRecallMetric, WordsSubtokenF1Metric
@@ -18,22 +20,26 @@ from model_base import ModelBase
 
 class _KerasModelInputTensorsFormer(ModelInputTensorsFormer):
     def to_model_input_form(self, input_tensors: ReaderInputTensors):
-        inputs = tuple(input_tensors)[:4]
+        inputs = (input_tensors.path_source_indices, input_tensors.path_indices,
+                  input_tensors.path_target_indices, input_tensors.context_valid_mask)
         targets = {'y_hat': input_tensors.target_index}
         return inputs, targets
 
     def from_model_input_form(self, input_row) -> ReaderInputTensors:
         inputs = input_row[0]
-        targets = {'target_index': input_row[1]['y_hat']}
-        return ReaderInputTensors(*inputs, **targets)
+        targets = input_row[1]
+        return ReaderInputTensors(
+            path_source_indices=inputs[0],
+            path_indices=inputs[1],
+            path_target_indices=inputs[2],
+            context_valid_mask=inputs[3],
+            target_index=targets['y_hat']
+        )
 
 
 class Code2VecModel(ModelBase):
     def __init__(self, config: Config):
         super(Code2VecModel, self).__init__(config)
-        K.set_session(self.sess)
-        self.keras_model = self._build_keras_model()
-        print('Keras model built')
 
     def _build_keras_model(self) -> keras.Model:
         # Each input sample consists of a bag of x`MAX_CONTEXTS` tuples (source_terminal, path, target_terminal).
@@ -76,19 +82,22 @@ class Code2VecModel(ModelBase):
             self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION,
             self.index_to_target_word_table,
             predicted_words_filters=[
-                lambda word_indices, _: tf.not_equal(word_indices, common.SpecialDictWords.NoSuchWord.value),
+                lambda word_indices, _: tf.not_equal(word_indices, SpecialDictWords.OOV.value),
                 lambda _, word_strings: tf.strings.regex_full_match(word_strings, r'^[a-zA-Z\|]+$')
             ], name='target_word_prediction')(y_hat)
 
         # Wrap the layers into a Keras model, using our subtoken-metrics and the CE loss.
         inputs = [source_terminals_input, paths_input, target_terminals_input, valid_mask]
         keras_model = keras.Model(inputs=inputs, outputs=[y_hat, target_word_prediction, code_vectors])
+        top_k_acc = partial(sparse_top_k_categorical_accuracy, k=self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION)
+        top_k_acc.__name__ = 'top{k}_acc'.format(k=self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION)
         metrics = {'y_hat': [
-            'accuracy',  # TODO: implement top-k accuracy metric
-            WordsSubtokenPrecisionMetric(self.index_to_target_word_table, target_word_prediction, name='precision'),
-            WordsSubtokenRecallMetric(self.index_to_target_word_table, target_word_prediction, name='recall'),
-            WordsSubtokenF1Metric(self.index_to_target_word_table, target_word_prediction, name='f1')
+            top_k_acc,
+            WordsSubtokenPrecisionMetric(self.index_to_target_word_table, target_word_prediction, name='subtoken_precision'),
+            WordsSubtokenRecallMetric(self.index_to_target_word_table, target_word_prediction, name='subtoken_recall'),
+            WordsSubtokenF1Metric(self.index_to_target_word_table, target_word_prediction, name='subtoken_f1')
         ]}
+        # TODO: Consider using a TensorFlow optimizer from `tf.train`.
         keras_model.compile(loss={'y_hat': 'sparse_categorical_crossentropy'}, optimizer='adam', metrics=metrics)
         return keras_model
 
@@ -108,36 +117,54 @@ class Code2VecModel(ModelBase):
 
         # TODO: set max_to_keep=self.config.MAX_TO_KEEP
         # TODO: set the correct `monitor` quantity (example: monitor='val_acc', mode='max')
+        # TODO: consider using tf.train.CheckpointManager
+        # TODO: do we want to use early stopping?
         checkpoint = ModelCheckpoint(
-            self.config.SAVE_PATH + '_epoch{epoch}',
-            verbose=1, save_best_only=False, save_weights_only=True,
+            self.config.MODEL_SAVE_PATH + '_epoch{epoch}',
+            verbose=1, save_best_only=False, save_weights_only=self.config.RELEASE,
             period=self.config.SAVE_EVERY_EPOCHS)
 
-        self.initialize_session_variables(self.sess)
+        self.initialize_variables()
 
         self.keras_model.fit(
             train_data_input_reader.dataset,
             steps_per_epoch=self.config.train_steps_per_epoch,
             epochs=self.config.NUM_EPOCHS,
-            # validation_data=val_data_input_reader.dataset,      # TODO: must set `validation_steps`
-            # validation_steps=self.config.test_steps_per_epoch,  # FIXME: how to obtain #VALIDATION_EXAMPLES?
+            batch_size=self.config.TRAIN_BATCH_SIZE,
+            validation_data=val_data_input_reader.dataset,
+            validation_steps=self.config.test_steps_per_epoch,
             callbacks=[checkpoint])
 
     def evaluate(self):
         val_data_input_reader = self._create_data_reader(is_evaluating=True)
-        self.initialize_session_variables(self.sess)
+        self.initialize_variables()
         return self.keras_model.evaluate(val_data_input_reader.dataset, steps=self.config.test_steps_per_epoch)
 
     def predict(self, predict_data_lines):
         val_data_input_reader = self._create_data_reader(is_evaluating=True)
-        self.initialize_session_variables(self.sess)
+        self.initialize_variables()
         return self.keras_model.predict(val_data_input_reader.dataset, steps=self.config.test_steps_per_epoch)
 
-    def save_model(self, sess, path):
-        self.keras_model.save_weights(self.config.SAVE_PATH)
+    def _save_inner_model(self, path):
+        if self.config.RELEASE:
+            self.keras_model.save_weights(path)
+        else:
+            self.keras_model.save(path)
 
-    def load_model(self, sess):
-        self.keras_model.load_weights(self.config.LOAD_PATH)
+    def _load_or_build_inner_model(self):
+        K.set_session(self.sess)
+
+        if not self.config.MODEL_LOAD_PATH:
+            self.keras_model = self._build_keras_model()
+        else:
+            load_released_model = self.config.MODEL_LOAD_PATH.split('.')[-1] == 'release'
+            if load_released_model:
+                self.keras_model = self._build_keras_model()
+                self.keras_model.load_weights(self.config.MODEL_LOAD_PATH)
+            else:
+                self.keras_model = keras.models.load_model(self.config.MODEL_LOAD_PATH)
+
+        self.keras_model.summary()
 
     def save_word2vec_format(self, dest, source):
         raise NotImplemented()  # TODO: implement!

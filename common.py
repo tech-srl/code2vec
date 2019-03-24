@@ -3,16 +3,10 @@ import json
 import sys
 from enum import Enum
 import tensorflow as tf
+from itertools import (takewhile, repeat)
 
 
 class common:
-
-    class SpecialDictWords(Enum):
-        NoSuchWord = 0
-
-        @classmethod
-        def index_to_start_dict_from(cls):
-            return 1 + max(special_word.value for special_word in cls)
 
     @staticmethod
     def normalize_word(word):
@@ -148,7 +142,7 @@ class common:
 
     @staticmethod
     def legal_method_names_checker(name):
-        return name != common.SpecialDictWords.NoSuchWord.name and re.match('^[a-zA-Z\|]+$', name)
+        return name != SpecialDictWords.OOV.name and re.match('^[a-zA-Z\|]+$', name)
 
     @staticmethod
     def filter_impossible_names(top_words):
@@ -166,7 +160,7 @@ class common:
             original_name, top_suggestions, top_scores, attention_per_context = list(single_method)
             current_method_prediction_results = PredictionResults(original_name)
             for i, predicted in enumerate(top_suggestions):
-                if predicted == common.SpecialDictWords.NoSuchWord.name:
+                if predicted == SpecialDictWords.OOV.name:
                     continue
                 suggestion_subtokens = common.get_subtokens(predicted)
                 current_method_prediction_results.append_prediction(suggestion_subtokens, top_scores[i].item())
@@ -186,6 +180,12 @@ class common:
         bool_tensor_as_int32 = tf.cast(bool_tensor, dtype=tf.int32)
         cumsum = tf.cumsum(bool_tensor_as_int32, axis=-1, exclusive=False)
         return tf.logical_and(tf.equal(cumsum, 1), bool_tensor)
+
+    @staticmethod
+    def rawincount(filename):
+        with open(filename, 'rb') as f:
+            bufgen = takewhile(lambda x: x, (f.raw.read(1024 * 1024) for _ in repeat(None)))
+            return sum(buf.count(b'\n') for buf in bufgen)
 
 
 class PredictionResults:
@@ -207,3 +207,17 @@ class PredictionResults:
 class VocabType(Enum):
     Token = 1
     Target = 2
+
+
+class SpecialDictWords(Enum):
+    OOV = 0
+    PAD = 1
+    OOV_PAD_MAX = PAD
+
+    @classmethod
+    def special_word_max_index(cls):
+        return max(special_word.value for special_word in cls)
+
+    @classmethod
+    def index_to_start_dict_from(cls):
+        return 1 + cls.special_word_max_index()

@@ -48,7 +48,7 @@ if __name__ == '__main__':
 
     model = load_model_dynamically(config)
     print('Created model')
-    if config.TRAIN_PATH:
+    if config.TRAIN_DATA_PATH:
         model.train()
     if args.save_w2v is not None:
         model.save_word2vec_format(args.save_w2v, source=VocabType.Token)
@@ -56,7 +56,7 @@ if __name__ == '__main__':
     if args.save_t2v is not None:
         model.save_word2vec_format(args.save_t2v, source=VocabType.Target)
         print('Target word vectors saved in word2vec text format in: %s' % args.save_t2v)
-    if config.TEST_PATH and not args.data_path:
+    if config.TEST_DATA_PATH and not args.data_path:
         eval_results = model.evaluate()
         if eval_results is not None:
             results, precision, recall, f1 = eval_results
