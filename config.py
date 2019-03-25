@@ -8,11 +8,11 @@ class Config:
         config.DL_FRAMEWORK = 'keras'
         config.NUM_EPOCHS = 20
         config.SAVE_EVERY_EPOCHS = 1
-        config.TRAIN_BATCH_SIZE = 1024
+        config.TRAIN_BATCH_SIZE = 512
         config.TEST_BATCH_SIZE = config.TRAIN_BATCH_SIZE
-        config.READING_BATCH_SIZE = 1300 * 4
-        config.NUM_BATCHING_THREADS = 2
-        config.BATCH_QUEUE_SIZE = 300000
+        config.READING_BATCH_SIZE = 1300 * 4  # not used by the new reader
+        config.NUM_BATCHING_THREADS = 2  # not used by the new reader
+        config.BATCH_QUEUE_SIZE = 300000  # not used by the new reader
         config.MAX_CONTEXTS = 200
         config.MAX_WORDS_VOCAB_SIZE = 1301136
         config.MAX_TARGET_VOCAB_SIZE = 261245
@@ -22,7 +22,7 @@ class Config:
         config.DROPOUT_KEEP_RATE = 0.75
         config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION = 10
 
-        config.READER_NUM_PARALLEL_BATCHES = 1  # cpu cores [for tf.contrib.data.map_and_batch()]
+        config.READER_NUM_PARALLEL_BATCHES = 6  # cpu cores [for tf.contrib.data.map_and_batch()]
         config.SHUFFLE_BUFFER_SIZE = 10000
         config.CSV_BUFFER_SIZE = 100 * 1024 * 1024  # 100 MB
 
@@ -41,9 +41,9 @@ class Config:
         self.SAVE_EVERY_EPOCHS: int = 0
         self.TRAIN_BATCH_SIZE: int = 0
         self.TEST_BATCH_SIZE: int = 0
-        self.READING_BATCH_SIZE: int = 0
-        self.NUM_BATCHING_THREADS: int = 0
-        self.BATCH_QUEUE_SIZE: int = 0
+        self.READING_BATCH_SIZE: int = 0  # not used by the new reader
+        self.NUM_BATCHING_THREADS: int = 0  # not used by the new reader
+        self.BATCH_QUEUE_SIZE: int = 0  # not used by the new reader
         self.MAX_CONTEXTS: int = 0
         self.MAX_WORDS_VOCAB_SIZE: int = 0
         self.MAX_TARGET_VOCAB_SIZE: int = 0

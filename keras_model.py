@@ -6,6 +6,7 @@ from tensorflow.python.keras.callbacks import ModelCheckpoint
 from tensorflow.python.keras.metrics import sparse_top_k_categorical_accuracy
 
 from path_context_reader import PathContextReader, ModelInputTensorsFormer, ReaderInputTensors
+import os
 import numpy as np
 import time
 import pickle
@@ -44,9 +45,9 @@ class Code2VecModel(ModelBase):
     def _build_keras_model(self) -> keras.Model:
         # Each input sample consists of a bag of x`MAX_CONTEXTS` tuples (source_terminal, path, target_terminal).
         # The valid mask indicates for each context whether it actually exists or it is just a padding.
-        source_terminals_input = Input((self.config.MAX_CONTEXTS,))
-        paths_input = Input((self.config.MAX_CONTEXTS,))
-        target_terminals_input = Input((self.config.MAX_CONTEXTS,))
+        source_terminals_input = Input((self.config.MAX_CONTEXTS,), dtype=tf.int32)
+        paths_input = Input((self.config.MAX_CONTEXTS,), dtype=tf.int32)
+        target_terminals_input = Input((self.config.MAX_CONTEXTS,), dtype=tf.int32)
         valid_mask = Input((self.config.MAX_CONTEXTS,))
 
         # TODO: consider set embedding initializer or leave it default? [for 2 embeddings below and last dense layer]
@@ -66,7 +67,8 @@ class Code2VecModel(ModelBase):
 
         # Lets get dense: Apply a dense layer for each context vector (using same weights for all of the context).
         context_after_dense = TimeDistributed(
-            Dense(self.config.EMBEDDINGS_SIZE * 3, input_dim=self.config.EMBEDDINGS_SIZE * 3, activation='tanh')
+            Dense(self.config.EMBEDDINGS_SIZE * 3, input_dim=self.config.EMBEDDINGS_SIZE * 3,
+                  use_bias=False, activation='tanh')
         )(context_embedded)
 
         # The final code vectors are received by applying attention to the "densed" context vectors.
@@ -87,18 +89,21 @@ class Code2VecModel(ModelBase):
             ], name='target_word_prediction')(y_hat)
 
         # Wrap the layers into a Keras model, using our subtoken-metrics and the CE loss.
-        inputs = [source_terminals_input, paths_input, target_terminals_input, valid_mask]
-        keras_model = keras.Model(inputs=inputs, outputs=[y_hat, target_word_prediction, code_vectors])
+        keras_model = keras.Model(
+            inputs=[source_terminals_input, paths_input, target_terminals_input, valid_mask],
+            outputs=[y_hat, code_vectors, target_word_prediction])
         top_k_acc = partial(sparse_top_k_categorical_accuracy, k=self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION)
         top_k_acc.__name__ = 'top{k}_acc'.format(k=self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION)
         metrics = {'y_hat': [
             top_k_acc,
-            WordsSubtokenPrecisionMetric(self.index_to_target_word_table, target_word_prediction, name='subtoken_precision'),
+            WordsSubtokenPrecisionMetric(self.index_to_target_word_table, target_word_prediction,
+                                         name='subtoken_precision'),
             WordsSubtokenRecallMetric(self.index_to_target_word_table, target_word_prediction, name='subtoken_recall'),
             WordsSubtokenF1Metric(self.index_to_target_word_table, target_word_prediction, name='subtoken_f1')
         ]}
-        # TODO: Consider using a TensorFlow optimizer from `tf.train`.
-        keras_model.compile(loss={'y_hat': 'sparse_categorical_crossentropy'}, optimizer='adam', metrics=metrics)
+        keras_model.compile(loss={'y_hat': 'sparse_categorical_crossentropy'},
+                            optimizer=tf.train.AdamOptimizer(),
+                            metrics=metrics)
         return keras_model
 
     def _create_data_reader(self, is_evaluating: bool = False):
@@ -147,9 +152,9 @@ class Code2VecModel(ModelBase):
 
     def _save_inner_model(self, path):
         if self.config.RELEASE:
-            self.keras_model.save_weights(path)
+            self.keras_model.save_weights(path + '.keras_weights')
         else:
-            self.keras_model.save(path)
+            self.keras_model.save(path + '.keras_model')
 
     def _load_or_build_inner_model(self):
         K.set_session(self.sess)
@@ -157,12 +162,23 @@ class Code2VecModel(ModelBase):
         if not self.config.MODEL_LOAD_PATH:
             self.keras_model = self._build_keras_model()
         else:
-            load_released_model = self.config.MODEL_LOAD_PATH.split('.')[-1] == 'release'
-            if load_released_model:
-                self.keras_model = self._build_keras_model()
-                self.keras_model.load_weights(self.config.MODEL_LOAD_PATH)
+            model_file_path = self.config.MODEL_LOAD_PATH + '.keras_model'
+            weights_file_path = self.config.MODEL_LOAD_PATH + '.keras_weights'
+
+            # when loading the model for further training, we must use the full saved model file (not just weights).
+            must_use_full_model = self.config.TRAIN_DATA_PATH
+            if must_use_full_model and not os.path.isfile(model_file_path):
+                raise ValueError(
+                    "There is no model at path `{model_file_path}`. When loading the model for further training,"
+                    "we must use a full saved model file (not just weights).".format(model_file_path=model_file_path))
+            use_full_model = must_use_full_model or not os.path.isfile(weights_file_path)
+
+            if use_full_model:
+                self.keras_model = keras.models.load_model(model_file_path)
             else:
-                self.keras_model = keras.models.load_model(self.config.MODEL_LOAD_PATH)
+                # load the "released" model (only the weights).
+                self.keras_model = self._build_keras_model()
+                self.keras_model.load_weights(weights_file_path)
 
         self.keras_model.summary()
 

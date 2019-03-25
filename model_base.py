@@ -3,6 +3,7 @@ import numpy as np
 import time
 import pickle
 import abc
+import os
 
 from common import common, VocabType, SpecialDictWords
 from config import Config
@@ -24,9 +25,21 @@ class ModelBase(abc.ABC):
     def _init_num_of_examples(self):
         print('Checking number of examples ... ', end='')
         if self.config.TRAIN_DATA_PATH:
-            self.config.NUM_TRAIN_EXAMPLES = common.rawincount(self.config.TRAIN_DATA_PATH + '.train.c2v')
+            if os.path.isfile(self.config.TRAIN_DATA_PATH + '.train.c2v.num_examples'):
+                with open(self.config.TRAIN_DATA_PATH + '.train.c2v.num_examples', 'r') as file:
+                    self.config.NUM_TRAIN_EXAMPLES = int(file.readline())
+            else:
+                self.config.NUM_TRAIN_EXAMPLES = common.rawincount(self.config.TRAIN_DATA_PATH + '.train.c2v')
+                with open(self.config.TRAIN_DATA_PATH + '.train.c2v.num_examples', 'w') as file:
+                    file.write(str(self.config.NUM_TRAIN_EXAMPLES))
         if self.config.TEST_DATA_PATH:
-            self.config.NUM_TEST_EXAMPLES = common.rawincount(self.config.TEST_DATA_PATH)
+            if os.path.isfile(self.config.TEST_DATA_PATH + '.num_examples'):
+                with open(self.config.TEST_DATA_PATH + '.num_examples', 'r') as file:
+                    self.config.NUM_TEST_EXAMPLES = int(file.readline())
+            else:
+                self.config.NUM_TEST_EXAMPLES = common.rawincount(self.config.TEST_DATA_PATH)
+                with open(self.config.TEST_DATA_PATH + '.num_examples', 'w') as file:
+                    file.write(str(self.config.NUM_TEST_EXAMPLES))
         print('Done')
 
     def load_or_build(self):
