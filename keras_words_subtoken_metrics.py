@@ -12,7 +12,7 @@ class WordsSubtokenMetricBase(Metric):
     def __init__(self,
                  index_to_word_table: Optional[tf.contrib.lookup.HashTable] = None,
                  predicted_word_output=None,
-                 subtokens_delimiter: str = ' | ', name=None, dtype=None):
+                 subtokens_delimiter: str = '|', name=None, dtype=None):
         super(WordsSubtokenMetricBase, self).__init__(name=name, dtype=dtype)
         self.tp = self.add_weight('true_positives', shape=(), initializer=init_ops.zeros_initializer)
         self.fp = self.add_weight('false_positives', shape=(), initializer=init_ops.zeros_initializer)
