@@ -5,7 +5,7 @@ import pickle
 import abc
 import os
 
-from common import common, VocabType, SpecialDictWords
+from common import common, VocabType, SpecialVocabWords, Vocab
 from config import Config
 
 
@@ -55,61 +55,43 @@ class ModelBase(abc.ABC):
     def _load_or_create_vocab_dict(self):
         if self.config.TRAIN_DATA_PATH and not self.config.MODEL_LOAD_PATH:
             with open('{}.dict.c2v'.format(self.config.TRAIN_DATA_PATH), 'rb') as file:
-                word_to_count = pickle.load(file)
+                token_to_count = pickle.load(file)
                 path_to_count = pickle.load(file)
                 target_to_count = pickle.load(file)
-                print('Dictionaries loaded.')
-            self.word_to_index, self.index_to_word, self.word_vocab_size = \
-                common.load_vocab_from_dict(word_to_count, self.config.MAX_WORDS_VOCAB_SIZE,
-                                            start_from=SpecialDictWords.index_to_start_dict_from())
-            print('Loaded word vocab. size: %d' % self.word_vocab_size)
-
-            self.target_word_to_index, self.index_to_target_word, self.target_word_vocab_size = \
-                common.load_vocab_from_dict(target_to_count, self.config.MAX_TARGET_VOCAB_SIZE,
-                                            start_from=SpecialDictWords.index_to_start_dict_from())
-            print('Loaded target word vocab. size: %d' % self.target_word_vocab_size)
-
-            self.path_to_index, self.index_to_path, self.path_vocab_size = \
-                common.load_vocab_from_dict(path_to_count, self.config.MAX_PATHS_VOCAB_SIZE,
-                                            start_from=SpecialDictWords.index_to_start_dict_from())
-            print('Loaded paths vocab. size: %d' % self.path_vocab_size)
+            print('Word frequencies dictionaries loaded. Now creating vocabularies.')
+            self.token_vocab = Vocab.create_from_freq_dict(
+                token_to_count, self.config.MAX_TOKEN_VOCAB_SIZE,
+                special_words=[SpecialVocabWords.PAD, SpecialVocabWords.OOV])
+            print('Created token vocab. size: %d' % self.token_vocab.size)
+            self.path_vocab = Vocab.create_from_freq_dict(
+                path_to_count, self.config.MAX_PATH_VOCAB_SIZE,
+                special_words=[SpecialVocabWords.PAD, SpecialVocabWords.OOV])
+            print('Created path vocab. size: %d' % self.path_vocab.size)
+            self.target_vocab = Vocab.create_from_freq_dict(
+                target_to_count, self.config.MAX_TARGET_VOCAB_SIZE,
+                special_words=[SpecialVocabWords.OOV])
+            print('Created target vocab. size: %d' % self.target_vocab.size)
         else:
-            dictionaries_path = self._get_dictionaries_path(self.config.MODEL_LOAD_PATH)
-            with open(dictionaries_path, 'rb') as file:
-                print('Loading model dictionaries from: %s ...' % dictionaries_path, end='')
-                self.word_to_index = pickle.load(file)
-                self.index_to_word = pickle.load(file)
-                self.word_vocab_size = pickle.load(file)
-
-                self.target_word_to_index = pickle.load(file)
-                self.index_to_target_word = pickle.load(file)
-                self.target_word_vocab_size = pickle.load(file)
-
-                self.path_to_index = pickle.load(file)
-                self.index_to_path = pickle.load(file)
-                self.path_vocab_size = pickle.load(file)
-                print(' Done')
+            vocabularies_path = self._get_vocabularies_path(self.config.MODEL_LOAD_PATH)
+            with open(vocabularies_path, 'rb') as file:
+                print('Loading model vocabularies from: %s ... ' % vocabularies_path, end='')
+                self.token_vocab = pickle.load(file)
+                self.path_vocab = pickle.load(file)
+                self.target_vocab = pickle.load(file)
+                print('Done')
 
     def _save_vocab_dict(self, path):
-        with open(self._get_dictionaries_path(path), 'wb') as file:
-            pickle.dump(self.word_to_index, file)
-            pickle.dump(self.index_to_word, file)
-            pickle.dump(self.word_vocab_size, file)
-
-            pickle.dump(self.target_word_to_index, file)
-            pickle.dump(self.index_to_target_word, file)
-            pickle.dump(self.target_word_vocab_size, file)
-
-            pickle.dump(self.path_to_index, file)
-            pickle.dump(self.index_to_path, file)
-            pickle.dump(self.path_vocab_size, file)
+        with open(self._get_vocabularies_path(path), 'wb') as file:
+            pickle.dump(self.token_vocab, file)
+            pickle.dump(self.path_vocab, file)
+            pickle.dump(self.target_vocab, file)
 
     def _create_index_to_target_word_map(self):
         self.index_to_target_word_table = tf.contrib.lookup.HashTable(
-            tf.contrib.lookup.KeyValueTensorInitializer(list(self.index_to_target_word.keys()),
-                                                        list(self.index_to_target_word.values()),
+            tf.contrib.lookup.KeyValueTensorInitializer(list(self.target_vocab.index_to_word.keys()),
+                                                        list(self.target_vocab.index_to_word.values()),
                                                         key_dtype=tf.int64, value_dtype=tf.string),
-            default_value=tf.constant(SpecialDictWords.OOV.word, dtype=tf.string))
+            default_value=tf.constant(SpecialVocabWords.OOV, dtype=tf.string))
 
     def _write_code_vectors(self, file, code_vectors):
         for vec in code_vectors:
@@ -140,9 +122,9 @@ class ModelBase(abc.ABC):
         ...
 
     @staticmethod
-    def _get_dictionaries_path(model_file_path):
-        dictionaries_save_file_name = "dictionaries.bin"
-        return '/'.join(model_file_path.split('/')[:-1] + [dictionaries_save_file_name])
+    def _get_vocabularies_path(model_file_path):
+        vocabularies_save_file_name = "vocabularies.bin"
+        return '/'.join(model_file_path.split('/')[:-1] + [vocabularies_save_file_name])
 
     @abc.abstractmethod
     def _save_inner_model(self, path):

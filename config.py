@@ -14,9 +14,9 @@ class Config:
         config.NUM_BATCHING_THREADS = 2  # not used by the new reader
         config.BATCH_QUEUE_SIZE = 300000  # not used by the new reader
         config.MAX_CONTEXTS = 200
-        config.MAX_WORDS_VOCAB_SIZE = 1301136
+        config.MAX_TOKEN_VOCAB_SIZE = 1301136
         config.MAX_TARGET_VOCAB_SIZE = 261245
-        config.MAX_PATHS_VOCAB_SIZE = 911417
+        config.MAX_PATH_VOCAB_SIZE = 911417
         config.EMBEDDINGS_SIZE = 128
         config.MAX_TO_KEEP = 10
         config.DROPOUT_KEEP_RATE = 0.75
@@ -45,9 +45,9 @@ class Config:
         self.NUM_BATCHING_THREADS: int = 0  # not used by the new reader
         self.BATCH_QUEUE_SIZE: int = 0  # not used by the new reader
         self.MAX_CONTEXTS: int = 0
-        self.MAX_WORDS_VOCAB_SIZE: int = 0
+        self.MAX_TOKEN_VOCAB_SIZE: int = 0
         self.MAX_TARGET_VOCAB_SIZE: int = 0
-        self.MAX_PATHS_VOCAB_SIZE: int = 0
+        self.MAX_PATH_VOCAB_SIZE: int = 0
         self.EMBEDDINGS_SIZE: int = 0
         self.MAX_TO_KEEP: int = 0
         self.DROPOUT_KEEP_RATE: float = 0

@@ -3,8 +3,33 @@ import json
 import sys
 from enum import Enum
 import tensorflow as tf
-from itertools import (takewhile, repeat)
-from typing import NamedTuple
+from itertools import takewhile, repeat, chain
+from typing import Optional, Dict, Iterable
+
+
+class SpecialVocabWords:
+    PAD = '<PAD>'  # padding
+    OOV = '<OOV>'  # out-of-vocabulary
+
+
+class Vocab:
+    def __init__(self, words: Optional[Iterable[str]] = None):
+        self.word_to_index: Dict[str, int] = {}
+        self.index_to_word: Dict[int, str] = {}
+
+        for index, word in enumerate(words):
+            self.word_to_index[word] = index
+            self.index_to_word[index] = word
+
+        self.size = len(self.word_to_index)
+
+    @classmethod
+    def create_from_freq_dict(cls, word_to_count: Dict[str, int], max_size: int,
+                              special_words: Optional[Iterable[str]] = None):
+        sorted_counts = sorted(word_to_count, key=word_to_count.get, reverse=True)
+        limited_sorted = sorted_counts[:max_size]
+        all_words = chain(special_words, limited_sorted)
+        return cls(all_words)
 
 
 class common:
@@ -44,22 +69,6 @@ class common:
         return result
 
     @staticmethod
-    def _load_vocab_from_dict(word_to_count, min_count=0, start_from=0):
-        word_to_index = {}
-        index_to_word = {}
-        next_index = start_from
-        for word, count in word_to_count.items():
-            if count < min_count:
-                continue
-            if word in word_to_index:
-                continue
-            word_to_index[word] = next_index
-            index_to_word[next_index] = word
-            word_to_count[word] = count
-            next_index += 1
-        return word_to_index, index_to_word, next_index - start_from
-
-    @staticmethod
     def load_vocab_from_histogram(path, min_count=0, start_from=0, max_size=None, return_counts=False):
         if max_size is not None:
             word_to_index, index_to_word, next_index, word_to_count = \
@@ -72,15 +81,6 @@ class common:
             # Take min_count to be one plus the count of the max_size'th word
             min_count = sorted(word_to_count.values(), reverse=True)[max_size] + 1
         return common._load_vocab_from_histogram(path, min_count, start_from, return_counts)
-
-    @staticmethod
-    def load_vocab_from_dict(word_to_count, max_size=None, start_from=0):
-        if max_size is not None:
-            if max_size > len(word_to_count):
-                min_count = 0
-            else:
-                min_count = sorted(word_to_count.values(), reverse=True)[max_size] + 1
-        return common._load_vocab_from_dict(word_to_count, min_count, start_from)
 
     @staticmethod
     def load_json(json_file):
@@ -143,7 +143,7 @@ class common:
 
     @staticmethod
     def legal_method_names_checker(name):
-        return name != SpecialDictWords.OOV.word and re.match('^[a-zA-Z\|]+$', name)
+        return name != SpecialVocabWords.OOV and re.match('^[a-zA-Z\|]+$', name)
 
     @staticmethod
     def filter_impossible_names(top_words):
@@ -161,7 +161,7 @@ class common:
             original_name, top_suggestions, top_scores, attention_per_context = list(single_method)
             current_method_prediction_results = PredictionResults(original_name)
             for i, predicted in enumerate(top_suggestions):
-                if predicted == SpecialDictWords.OOV.word:
+                if predicted == SpecialVocabWords.OOV:
                     continue
                 suggestion_subtokens = common.get_subtokens(predicted)
                 current_method_prediction_results.append_prediction(suggestion_subtokens, top_scores[i].item())
@@ -208,28 +208,3 @@ class PredictionResults:
 class VocabType(Enum):
     Token = 1
     Target = 2
-
-
-class SpecialWord(NamedTuple):
-    word: str
-    index: int
-
-
-class SpecialDictWords:
-    PAD = SpecialWord(word='<PAD>', index=0)
-    OOV = SpecialWord(word='<OOV>', index=1)
-    PAD_OOV_MAX_IDX = PAD.index
-
-    @classmethod
-    def words(cls):
-        for var in vars(cls).values():
-            if isinstance(var, SpecialWord):
-                yield var
-
-    @classmethod
-    def special_word_max_index(cls):
-        return max(special_word.index for special_word in cls.words())
-
-    @classmethod
-    def index_to_start_dict_from(cls):
-        return 1 + cls.special_word_max_index()

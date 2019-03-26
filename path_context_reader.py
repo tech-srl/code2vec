@@ -1,19 +1,22 @@
 import tensorflow as tf
 from typing import Dict, Tuple, NamedTuple, Union, Optional
 from config import Config
-from common import common, SpecialDictWords
+from common import common, SpecialVocabWords, Vocab
 import abc
 from functools import reduce
 
 
 class ReaderInputTensors(NamedTuple):
     """Used mostly for convenient-and-clear access to input parts."""
-    path_source_indices: tf.Tensor
+    path_source_token_indices: tf.Tensor
     path_indices: tf.Tensor
-    path_target_indices: tf.Tensor
+    path_target_token_indices: tf.Tensor
     context_valid_mask: tf.Tensor
     target_index: Optional[tf.Tensor] = None
     target_string: Optional[tf.Tensor] = None
+    path_source_token_strings: Optional[tf.Tensor] = None
+    path_strings: Optional[tf.Tensor] = None
+    path_target_token_strings: Optional[tf.Tensor] = None
 
 
 class ModelInputTensorsFormer(abc.ABC):
@@ -32,12 +35,12 @@ class PathContextReader:
     class_target_word_table = None
     class_path_table = None
 
-    CONTEXT_PADDING = ','.join([SpecialDictWords.PAD.word] * 3)
+    CONTEXT_PADDING = ','.join([SpecialVocabWords.PAD] * 3)
 
     def __init__(self,
-                 token_to_index: Dict[str, int],
-                 target_to_index: Dict[str, int],
-                 path_to_index: Dict[str, int],
+                 token_vocab: Vocab,
+                 target_vocab: Vocab,
+                 path_vocab: Vocab,
                  config: Config,
                  model_input_tensors_former: ModelInputTensorsFormer,
                  is_evaluating: bool = False):
@@ -46,9 +49,10 @@ class PathContextReader:
         self.is_evaluating = is_evaluating
         self.record_defaults = [[self.CONTEXT_PADDING]] * (self.config.MAX_CONTEXTS + 1)
 
-        self.token_table = PathContextReader._get_token_table(token_to_index)
-        self.target_table = PathContextReader._get_target_word_table(target_to_index)
-        self.path_table = PathContextReader._get_path_table(path_to_index)
+        self.token_vocab, self.target_vocab, self.path_vocab = token_vocab, target_vocab, path_vocab
+        self.token_table = PathContextReader._get_token_table(token_vocab.word_to_index)
+        self.target_table = PathContextReader._get_target_word_table(target_vocab.word_to_index)
+        self.path_table = PathContextReader._get_path_table(path_vocab.word_to_index)
 
         self._dataset = self._create_dataset_pipeline()
 
@@ -56,21 +60,21 @@ class PathContextReader:
     def _get_token_table(cls, token_to_index: Dict[str, int]):
         if cls.class_token_table is None:
             cls.class_token_table = cls._initalize_hash_map(
-                token_to_index, default_value=SpecialDictWords.OOV.index)
+                token_to_index, default_value=token_to_index[SpecialVocabWords.OOV])
         return cls.class_token_table
 
     @classmethod
     def _get_target_word_table(cls, target_to_index: Dict[str, int]):
         if cls.class_target_word_table is None:
             cls.class_target_word_table = cls._initalize_hash_map(
-                target_to_index, default_value=SpecialDictWords.OOV.index)
+                target_to_index, default_value=target_to_index[SpecialVocabWords.OOV])
         return cls.class_target_word_table
 
     @classmethod
     def _get_path_table(cls, path_to_index: Dict[str, int]):
         if cls.class_path_table is None:
             cls.class_path_table = cls._initalize_hash_map(
-                path_to_index, default_value=SpecialDictWords.OOV.index)
+                path_to_index, default_value=path_to_index[SpecialVocabWords.OOV])
         return cls.class_path_table
 
     @classmethod
@@ -108,20 +112,23 @@ class PathContextReader:
         row_parts = self.model_input_tensors_former.from_model_input_form(row_parts)
 
         assert all(tensor.shape == (self.config.MAX_CONTEXTS,) for tensor in
-                   {row_parts.path_source_indices, row_parts.path_indices,
-                    row_parts.path_target_indices, row_parts.context_valid_mask})
+                   {row_parts.path_source_token_indices, row_parts.path_indices,
+                    row_parts.path_target_token_indices, row_parts.context_valid_mask})
 
         # FIXME: Does "valid" here mean just "no padding" or "neither padding nor OOV"? I assumed just "no padding".
         any_word_valid_mask_per_context_part = [
-            tf.not_equal(tf.reduce_max(item, axis=0), SpecialDictWords.PAD.index)
-            for item in (row_parts.path_source_indices, row_parts.path_target_indices, row_parts.path_indices)]
+            tf.not_equal(tf.reduce_max(row_parts.path_source_token_indices, axis=0),
+                         self.token_vocab.word_to_index[SpecialVocabWords.PAD]),
+            tf.not_equal(tf.reduce_max(row_parts.path_target_token_indices, axis=0),
+                         self.token_vocab.word_to_index[SpecialVocabWords.PAD]),
+            tf.not_equal(tf.reduce_max(row_parts.path_indices, axis=0),
+                         self.path_vocab.word_to_index[SpecialVocabWords.PAD])]
         any_contexts_is_valid = reduce(tf.logical_or, any_word_valid_mask_per_context_part)  # scalar
 
         if self.is_evaluating:
             cond = any_contexts_is_valid  # scalar
         else:  # training
-            # FIXME: Does "valid word" here mean just "no padding" or "neither padding nor OOV"? I assumed both.
-            word_is_valid = tf.greater(row_parts.target_index, SpecialDictWords.PAD_OOV_MAX_IDX)  # scalar
+            word_is_valid = tf.greater(row_parts.target_index, self.target_vocab.word_to_index[SpecialVocabWords.OOV])  # scalar
             cond = tf.logical_and(word_is_valid, any_contexts_is_valid)  # scalar
 
         return cond  # scalar
@@ -133,11 +140,11 @@ class PathContextReader:
 
         contexts_str = tf.stack(row_parts[1:(self.config.MAX_CONTEXTS + 1)], axis=0)
         split_contexts = tf.string_split(contexts_str, delimiter=',', skip_empty=False)
-        # dense_split_contexts = tf.sparse_tensor_to_dense(split_contexts, default_value=SpecialDictWords.PAD.word)
+        # dense_split_contexts = tf.sparse_tensor_to_dense(split_contexts, default_value=SpecialVocabWords.PAD)
         sparse_split_contexts = tf.sparse.SparseTensor(
             indices=split_contexts.indices, values=split_contexts.values, dense_shape=[self.config.MAX_CONTEXTS, 3])
         dense_split_contexts = tf.reshape(
-            tf.sparse.to_dense(sp_input=sparse_split_contexts, default_value=SpecialDictWords.PAD.word),
+            tf.sparse.to_dense(sp_input=sparse_split_contexts, default_value=SpecialVocabWords.PAD),
             shape=[self.config.MAX_CONTEXTS, 3])  # (max_contexts, 3)
 
         path_source_strings = tf.squeeze(tf.slice(dense_split_contexts, [0, 0], [self.config.MAX_CONTEXTS, 1]), axis=1)
@@ -149,20 +156,24 @@ class PathContextReader:
 
         # FIXME: Does "valid" here mean just "no padding" or "neither padding nor OOV"? I assumed just "no padding".
         valid_word_mask_per_context_part = [
-            tf.not_equal(item, SpecialDictWords.PAD.index)
-            for item in (path_source_indices, path_target_indices, path_indices)]  # [(max_contexts, )]
+            tf.not_equal(path_source_indices, self.token_vocab.word_to_index[SpecialVocabWords.PAD]),
+            tf.not_equal(path_target_indices, self.token_vocab.word_to_index[SpecialVocabWords.PAD]),
+            tf.not_equal(path_indices, self.path_vocab.word_to_index[SpecialVocabWords.PAD])]  # [(max_contexts, )]
         context_valid_mask = tf.cast(reduce(tf.logical_or, valid_word_mask_per_context_part), dtype=tf.float32)  # (max_contexts, )
 
         assert all(tensor.shape == (self.config.MAX_CONTEXTS,) for tensor in
                    {path_source_indices, path_indices, path_target_indices, context_valid_mask})
 
         tensors = ReaderInputTensors(
-            path_source_indices=path_source_indices,
+            path_source_token_indices=path_source_indices,
             path_indices=path_indices,
-            path_target_indices=path_target_indices,
+            path_target_token_indices=path_target_indices,
             context_valid_mask=context_valid_mask,
             target_index=target_index,
-            target_string=target_str
+            target_string=target_str,
+            path_source_token_strings=path_source_strings,
+            path_strings=path_strings,
+            path_target_token_strings=path_target_strings
         )
 
         return self.model_input_tensors_former.to_model_input_form(tensors)

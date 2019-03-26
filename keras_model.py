@@ -11,7 +11,7 @@ import numpy as np
 import time
 import pickle
 from functools import partial
-from common import common, VocabType, SpecialDictWords
+from common import common, VocabType, SpecialVocabWords
 from keras_attention_layer import AttentionLayer
 from keras_word_prediction_layer import WordPredictionLayer
 from keras_words_subtoken_metrics import WordsSubtokenPrecisionMetric, WordsSubtokenRecallMetric, WordsSubtokenF1Metric
@@ -21,8 +21,8 @@ from model_base import ModelBase
 
 class _KerasModelInputTensorsFormer(ModelInputTensorsFormer):
     def to_model_input_form(self, input_tensors: ReaderInputTensors):
-        inputs = (input_tensors.path_source_indices, input_tensors.path_indices,
-                  input_tensors.path_target_indices, input_tensors.context_valid_mask)
+        inputs = (input_tensors.path_source_token_indices, input_tensors.path_indices,
+                  input_tensors.path_target_token_indices, input_tensors.context_valid_mask)
         targets = {'y_hat': input_tensors.target_index}
         return inputs, targets
 
@@ -30,9 +30,9 @@ class _KerasModelInputTensorsFormer(ModelInputTensorsFormer):
         inputs = input_row[0]
         targets = input_row[1]
         return ReaderInputTensors(
-            path_source_indices=inputs[0],
+            path_source_token_indices=inputs[0],
             path_indices=inputs[1],
-            path_target_indices=inputs[2],
+            path_target_token_indices=inputs[2],
             context_valid_mask=inputs[3],
             target_index=targets['y_hat']
         )
@@ -45,24 +45,24 @@ class Code2VecModel(ModelBase):
     def _build_keras_model(self) -> keras.Model:
         # Each input sample consists of a bag of x`MAX_CONTEXTS` tuples (source_terminal, path, target_terminal).
         # The valid mask indicates for each context whether it actually exists or it is just a padding.
-        source_terminals_input = Input((self.config.MAX_CONTEXTS,), dtype=tf.int32)
-        paths_input = Input((self.config.MAX_CONTEXTS,), dtype=tf.int32)
-        target_terminals_input = Input((self.config.MAX_CONTEXTS,), dtype=tf.int32)
-        valid_mask = Input((self.config.MAX_CONTEXTS,))
+        path_source_token_input = Input((self.config.MAX_CONTEXTS,), dtype=tf.int32)
+        path_input = Input((self.config.MAX_CONTEXTS,), dtype=tf.int32)
+        path_target_token_input = Input((self.config.MAX_CONTEXTS,), dtype=tf.int32)
+        context_valid_mask = Input((self.config.MAX_CONTEXTS,))
 
         # TODO: consider set embedding initializer or leave it default? [for 2 embeddings below and last dense layer]
 
         # Input paths are indexes, we embed these here.
-        paths_embedded = Embedding(self.path_vocab_size + 1, self.config.EMBEDDINGS_SIZE)(paths_input)
+        paths_embedded = Embedding(self.path_vocab.size + 1, self.config.EMBEDDINGS_SIZE)(path_input)
 
         # Input terminals are indexes, we embed these here.
-        terminals_embedding_shared_layer = Embedding(self.word_vocab_size + 1, self.config.EMBEDDINGS_SIZE)
-        source_terminals_embedded = terminals_embedding_shared_layer(source_terminals_input)
-        target_terminals_embedded = terminals_embedding_shared_layer(target_terminals_input)
+        token_embedding_shared_layer = Embedding(self.token_vocab.size + 1, self.config.EMBEDDINGS_SIZE)
+        path_source_token_embedded = token_embedding_shared_layer(path_source_token_input)
+        path_target_token_embedded = token_embedding_shared_layer(path_target_token_input)
 
         # `Context` is a concatenation of the 2 terminals & path embedding.
         # Each context is a vector of size 3 * EMBEDDINGS_SIZE.
-        context_embedded = Concatenate()([source_terminals_embedded, paths_embedded, target_terminals_embedded])
+        context_embedded = Concatenate()([path_source_token_embedded, paths_embedded, path_target_token_embedded])
         context_embedded = Dropout(1 - self.config.DROPOUT_KEEP_RATE)(context_embedded)
 
         # Lets get dense: Apply a dense layer for each context vector (using same weights for all of the context).
@@ -72,10 +72,10 @@ class Code2VecModel(ModelBase):
         )(context_embedded)
 
         # The final code vectors are received by applying attention to the "densed" context vectors.
-        code_vectors = AttentionLayer(name='code_vectors')(context_after_dense, mask=valid_mask)
+        code_vectors = AttentionLayer(name='code_vectors')(context_after_dense, mask=context_valid_mask)
 
         # "Decode": Now we use another dense layer to get the target word embedding from each code vector.
-        y_hat = Dense(self.target_word_vocab_size + 1, use_bias=False, activation='softmax', name='y_hat')(code_vectors)
+        y_hat = Dense(self.target_vocab.size + 1, use_bias=False, activation='softmax', name='y_hat')(code_vectors)
 
         # Actual target word prediction (as string). Used as a second output layer.
         # `predict()` method just have to return the output of this layer.
@@ -84,13 +84,13 @@ class Code2VecModel(ModelBase):
             self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION,
             self.index_to_target_word_table,
             predicted_words_filters=[
-                lambda word_indices, _: tf.not_equal(word_indices, SpecialDictWords.OOV.index),
+                lambda word_indices, _: tf.not_equal(word_indices, self.target_vocab.word_to_index[SpecialVocabWords.OOV]),
                 lambda _, word_strings: tf.strings.regex_full_match(word_strings, r'^[a-zA-Z\|]+$')
             ], name='target_word_prediction')(y_hat)
 
         # Wrap the layers into a Keras model, using our subtoken-metrics and the CE loss.
         keras_model = keras.Model(
-            inputs=[source_terminals_input, paths_input, target_terminals_input, valid_mask],
+            inputs=[path_source_token_input, path_input, path_target_token_input, context_valid_mask],
             outputs=[y_hat, code_vectors, target_word_prediction])
         top_k_acc = partial(sparse_top_k_categorical_accuracy, k=self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION)
         top_k_acc.__name__ = 'top{k}_acc'.format(k=self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION)
@@ -108,9 +108,9 @@ class Code2VecModel(ModelBase):
 
     def _create_data_reader(self, is_evaluating: bool = False):
         return PathContextReader(
-            token_to_index=self.word_to_index,
-            path_to_index=self.path_to_index,
-            target_to_index=self.target_word_to_index,
+            token_vocab=self.token_vocab,
+            path_vocab=self.path_vocab,
+            target_vocab=self.target_vocab,
             config=self.config,
             model_input_tensors_former=_KerasModelInputTensorsFormer(),
             is_evaluating=is_evaluating)
