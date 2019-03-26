@@ -84,7 +84,7 @@ class Code2VecModel(ModelBase):
             self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION,
             self.index_to_target_word_table,
             predicted_words_filters=[
-                lambda word_indices, _: tf.not_equal(word_indices, SpecialDictWords.OOV.value),
+                lambda word_indices, _: tf.not_equal(word_indices, SpecialDictWords.OOV.index),
                 lambda _, word_strings: tf.strings.regex_full_match(word_strings, r'^[a-zA-Z\|]+$')
             ], name='target_word_prediction')(y_hat)
 

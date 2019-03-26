@@ -32,7 +32,7 @@ class PathContextReader:
     class_target_word_table = None
     class_path_table = None
 
-    CONTEXT_PADDING = ','.join([SpecialDictWords.PAD.name] * 3)
+    CONTEXT_PADDING = ','.join([SpecialDictWords.PAD.word] * 3)
 
     def __init__(self,
                  token_to_index: Dict[str, int],
@@ -56,21 +56,21 @@ class PathContextReader:
     def _get_token_table(cls, token_to_index: Dict[str, int]):
         if cls.class_token_table is None:
             cls.class_token_table = cls._initalize_hash_map(
-                token_to_index, default_value=SpecialDictWords.OOV.value)
+                token_to_index, default_value=SpecialDictWords.OOV.index)
         return cls.class_token_table
 
     @classmethod
     def _get_target_word_table(cls, target_to_index: Dict[str, int]):
         if cls.class_target_word_table is None:
             cls.class_target_word_table = cls._initalize_hash_map(
-                target_to_index, default_value=SpecialDictWords.OOV.value)
+                target_to_index, default_value=SpecialDictWords.OOV.index)
         return cls.class_target_word_table
 
     @classmethod
     def _get_path_table(cls, path_to_index: Dict[str, int]):
         if cls.class_path_table is None:
             cls.class_path_table = cls._initalize_hash_map(
-                path_to_index, default_value=SpecialDictWords.OOV.value)
+                path_to_index, default_value=SpecialDictWords.OOV.index)
         return cls.class_path_table
 
     @classmethod
@@ -113,7 +113,7 @@ class PathContextReader:
 
         # FIXME: Does "valid" here mean just "no padding" or "neither padding nor OOV"? I assumed just "no padding".
         any_word_valid_mask_per_context_part = [
-            tf.not_equal(tf.reduce_max(item, axis=0), SpecialDictWords.PAD.value)
+            tf.not_equal(tf.reduce_max(item, axis=0), SpecialDictWords.PAD.index)
             for item in (row_parts.path_source_indices, row_parts.path_target_indices, row_parts.path_indices)]
         any_contexts_is_valid = reduce(tf.logical_or, any_word_valid_mask_per_context_part)  # scalar
 
@@ -121,7 +121,7 @@ class PathContextReader:
             cond = any_contexts_is_valid  # scalar
         else:  # training
             # FIXME: Does "valid word" here mean just "no padding" or "neither padding nor OOV"? I assumed both.
-            word_is_valid = tf.greater(row_parts.target_index, SpecialDictWords.OOV_PAD_MAX.value)  # scalar
+            word_is_valid = tf.greater(row_parts.target_index, SpecialDictWords.PAD_OOV_MAX_IDX)  # scalar
             cond = tf.logical_and(word_is_valid, any_contexts_is_valid)  # scalar
 
         return cond  # scalar
@@ -132,9 +132,13 @@ class PathContextReader:
         target_index = self.target_table.lookup(target_str)
 
         contexts_str = tf.stack(row_parts[1:(self.config.MAX_CONTEXTS + 1)], axis=0)
-        split_contexts = tf.string_split(contexts_str, delimiter=',')
-        dense_split_contexts = tf.sparse_tensor_to_dense(split_contexts,
-                                                         default_value=SpecialDictWords.OOV.name)
+        split_contexts = tf.string_split(contexts_str, delimiter=',', skip_empty=False)
+        # dense_split_contexts = tf.sparse_tensor_to_dense(split_contexts, default_value=SpecialDictWords.PAD.word)
+        sparse_split_contexts = tf.sparse.SparseTensor(
+            indices=split_contexts.indices, values=split_contexts.values, dense_shape=[self.config.MAX_CONTEXTS, 3])
+        dense_split_contexts = tf.reshape(
+            tf.sparse.to_dense(sp_input=sparse_split_contexts, default_value=SpecialDictWords.PAD.word),
+            shape=[self.config.MAX_CONTEXTS, 3])  # (max_contexts, 3)
 
         path_source_strings = tf.squeeze(tf.slice(dense_split_contexts, [0, 0], [self.config.MAX_CONTEXTS, 1]), axis=1)
         path_source_indices = self.token_table.lookup(path_source_strings)  # (max_contexts, )
@@ -145,7 +149,7 @@ class PathContextReader:
 
         # FIXME: Does "valid" here mean just "no padding" or "neither padding nor OOV"? I assumed just "no padding".
         valid_word_mask_per_context_part = [
-            tf.not_equal(item, SpecialDictWords.PAD.value)
+            tf.not_equal(item, SpecialDictWords.PAD.index)
             for item in (path_source_indices, path_target_indices, path_indices)]  # [(max_contexts, )]
         context_valid_mask = tf.cast(reduce(tf.logical_or, valid_word_mask_per_context_part), dtype=tf.float32)  # (max_contexts, )
 

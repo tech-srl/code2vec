@@ -4,6 +4,7 @@ import sys
 from enum import Enum
 import tensorflow as tf
 from itertools import (takewhile, repeat)
+from typing import NamedTuple
 
 
 class common:
@@ -142,7 +143,7 @@ class common:
 
     @staticmethod
     def legal_method_names_checker(name):
-        return name != SpecialDictWords.OOV.name and re.match('^[a-zA-Z\|]+$', name)
+        return name != SpecialDictWords.OOV.word and re.match('^[a-zA-Z\|]+$', name)
 
     @staticmethod
     def filter_impossible_names(top_words):
@@ -160,7 +161,7 @@ class common:
             original_name, top_suggestions, top_scores, attention_per_context = list(single_method)
             current_method_prediction_results = PredictionResults(original_name)
             for i, predicted in enumerate(top_suggestions):
-                if predicted == SpecialDictWords.OOV.name:
+                if predicted == SpecialDictWords.OOV.word:
                     continue
                 suggestion_subtokens = common.get_subtokens(predicted)
                 current_method_prediction_results.append_prediction(suggestion_subtokens, top_scores[i].item())
@@ -209,14 +210,25 @@ class VocabType(Enum):
     Target = 2
 
 
-class SpecialDictWords(Enum):
-    OOV = 0
-    PAD = 1
-    OOV_PAD_MAX = PAD
+class SpecialWord(NamedTuple):
+    word: str
+    index: int
+
+
+class SpecialDictWords:
+    PAD = SpecialWord(word='<PAD>', index=0)
+    OOV = SpecialWord(word='<OOV>', index=1)
+    PAD_OOV_MAX_IDX = PAD.index
+
+    @classmethod
+    def words(cls):
+        for var in vars(cls).values():
+            if isinstance(var, SpecialWord):
+                yield var
 
     @classmethod
     def special_word_max_index(cls):
-        return max(special_word.value for special_word in cls)
+        return max(special_word.index for special_word in cls.words())
 
     @classmethod
     def index_to_start_dict_from(cls):

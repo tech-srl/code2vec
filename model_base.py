@@ -109,7 +109,7 @@ class ModelBase(abc.ABC):
             tf.contrib.lookup.KeyValueTensorInitializer(list(self.index_to_target_word.keys()),
                                                         list(self.index_to_target_word.values()),
                                                         key_dtype=tf.int64, value_dtype=tf.string),
-            default_value=tf.constant(SpecialDictWords.OOV.name, dtype=tf.string))
+            default_value=tf.constant(SpecialDictWords.OOV.word, dtype=tf.string))
 
     def _write_code_vectors(self, file, code_vectors):
         for vec in code_vectors:
