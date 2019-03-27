@@ -32,7 +32,7 @@ class ModelInputTensorsFormer(abc.ABC):
 
 class PathContextReader:
     class_token_table = None
-    class_target_word_table = None
+    class_target_table = None
     class_path_table = None
 
     CONTEXT_PADDING = ','.join([SpecialVocabWords.PAD] * 3)
@@ -47,11 +47,11 @@ class PathContextReader:
         self.config = config
         self.model_input_tensors_former = model_input_tensors_former
         self.is_evaluating = is_evaluating
-        self.record_defaults = [[self.CONTEXT_PADDING]] * (self.config.MAX_CONTEXTS + 1)
+        self.csv_record_defaults = [[SpecialVocabWords.OOV]] + ([[self.CONTEXT_PADDING]] * self.config.MAX_CONTEXTS)
 
         self.token_vocab, self.target_vocab, self.path_vocab = token_vocab, target_vocab, path_vocab
         self.token_table = PathContextReader._get_token_table(token_vocab.word_to_index)
-        self.target_table = PathContextReader._get_target_word_table(target_vocab.word_to_index)
+        self.target_table = PathContextReader._get_target_table(target_vocab.word_to_index)
         self.path_table = PathContextReader._get_path_table(path_vocab.word_to_index)
 
         self._dataset = self._create_dataset_pipeline()
@@ -64,11 +64,11 @@ class PathContextReader:
         return cls.class_token_table
 
     @classmethod
-    def _get_target_word_table(cls, target_to_index: Dict[str, int]):
-        if cls.class_target_word_table is None:
-            cls.class_target_word_table = cls._initalize_hash_map(
+    def _get_target_table(cls, target_to_index: Dict[str, int]):
+        if cls.class_target_table is None:
+            cls.class_target_table = cls._initalize_hash_map(
                 target_to_index, default_value=target_to_index[SpecialVocabWords.OOV])
-        return cls.class_target_word_table
+        return cls.class_target_table
 
     @classmethod
     def _get_path_table(cls, path_to_index: Dict[str, int]):
@@ -85,8 +85,9 @@ class PathContextReader:
             default_value=tf.constant(default_value, dtype=tf.int32))
 
     def process_from_placeholder(self, row):
-        parts = tf.io.decode_csv(row, record_defaults=self.record_defaults, field_delim=' ', use_quote_delim=False)
-        return self._process_dataset(*parts)  # TODO: apply the filter `_filter_dataset()` here.
+        parts = tf.io.decode_csv(row, record_defaults=self.csv_record_defaults, field_delim=' ', use_quote_delim=False)
+        # TODO: apply the filter `_filter_input_rows()` here.
+        return self._map_raw_dataset_row_to_expected_model_input_form(*parts)
 
     @property
     def dataset(self):
@@ -94,7 +95,7 @@ class PathContextReader:
 
     def _create_dataset_pipeline(self) -> tf.data.Dataset:
         dataset = tf.data.experimental.CsvDataset(
-            self.config.data_path(is_evaluating=self.is_evaluating), record_defaults=self.record_defaults,
+            self.config.data_path(is_evaluating=self.is_evaluating), record_defaults=self.csv_record_defaults,
             field_delim=' ', use_quote_delim=False, buffer_size=self.config.CSV_BUFFER_SIZE)
 
         if not self.is_evaluating:
@@ -102,13 +103,14 @@ class PathContextReader:
                 dataset = dataset.repeat(self.config.NUM_EPOCHS)
             dataset = dataset.shuffle(self.config.SHUFFLE_BUFFER_SIZE, reshuffle_each_iteration=True)
 
-        dataset = dataset.map(self._process_dataset, num_parallel_calls=self.config.READER_NUM_PARALLEL_BATCHES)
-        dataset = dataset.filter(self._filter_dataset)
+        dataset = dataset.map(self._map_raw_dataset_row_to_expected_model_input_form,
+                              num_parallel_calls=self.config.READER_NUM_PARALLEL_BATCHES)
+        dataset = dataset.filter(self._filter_input_rows)
         dataset = dataset.batch(self.config.batch_size(is_evaluating=self.is_evaluating))
         dataset = dataset.prefetch(tf.contrib.data.AUTOTUNE)
         return dataset
 
-    def _filter_dataset(self, *row_parts) -> tf.bool:
+    def _filter_input_rows(self, *row_parts) -> tf.bool:
         row_parts = self.model_input_tensors_former.from_model_input_form(row_parts)
 
         assert all(tensor.shape == (self.config.MAX_CONTEXTS,) for tensor in
@@ -133,7 +135,8 @@ class PathContextReader:
 
         return cond  # scalar
 
-    def _process_dataset(self, *row_parts) -> Tuple[Union[tf.Tensor, Tuple[tf.Tensor, ...], Dict[str, tf.Tensor]], ...]:
+    def _map_raw_dataset_row_to_expected_model_input_form(self, *row_parts) -> \
+            Tuple[Union[tf.Tensor, Tuple[tf.Tensor, ...], Dict[str, tf.Tensor]], ...]:
         row_parts = list(row_parts)
         target_str = row_parts[0]
         target_index = self.target_table.lookup(target_str)
@@ -147,33 +150,37 @@ class PathContextReader:
             tf.sparse.to_dense(sp_input=sparse_split_contexts, default_value=SpecialVocabWords.PAD),
             shape=[self.config.MAX_CONTEXTS, 3])  # (max_contexts, 3)
 
-        path_source_strings = tf.squeeze(tf.slice(dense_split_contexts, [0, 0], [self.config.MAX_CONTEXTS, 1]), axis=1)
-        path_source_indices = self.token_table.lookup(path_source_strings)  # (max_contexts, )
-        path_strings = tf.squeeze(tf.slice(dense_split_contexts, [0, 1], [self.config.MAX_CONTEXTS, 1]), axis=1)
+        path_source_token_strings = tf.squeeze(
+            tf.slice(dense_split_contexts, begin=[0, 0], size=[self.config.MAX_CONTEXTS, 1]), axis=1)  # (max_contexts,)
+        path_strings = tf.squeeze(
+            tf.slice(dense_split_contexts, begin=[0, 1], size=[self.config.MAX_CONTEXTS, 1]), axis=1)  # (max_contexts,)
+        path_target_token_strings = tf.squeeze(
+            tf.slice(dense_split_contexts, begin=[0, 2], size=[self.config.MAX_CONTEXTS, 1]), axis=1)  # (max_contexts,)
+
+        path_source_token_indices = self.token_table.lookup(path_source_token_strings)  # (max_contexts, )
         path_indices = self.path_table.lookup(path_strings)  # (max_contexts, )
-        path_target_strings = tf.squeeze(tf.slice(dense_split_contexts, [0, 2], [self.config.MAX_CONTEXTS, 1]), axis=1)
-        path_target_indices = self.token_table.lookup(path_target_strings)  # (max_contexts, )
+        path_target_token_indices = self.token_table.lookup(path_target_token_strings)  # (max_contexts, )
 
         # FIXME: Does "valid" here mean just "no padding" or "neither padding nor OOV"? I assumed just "no padding".
         valid_word_mask_per_context_part = [
-            tf.not_equal(path_source_indices, self.token_vocab.word_to_index[SpecialVocabWords.PAD]),
-            tf.not_equal(path_target_indices, self.token_vocab.word_to_index[SpecialVocabWords.PAD]),
+            tf.not_equal(path_source_token_indices, self.token_vocab.word_to_index[SpecialVocabWords.PAD]),
+            tf.not_equal(path_target_token_indices, self.token_vocab.word_to_index[SpecialVocabWords.PAD]),
             tf.not_equal(path_indices, self.path_vocab.word_to_index[SpecialVocabWords.PAD])]  # [(max_contexts, )]
         context_valid_mask = tf.cast(reduce(tf.logical_or, valid_word_mask_per_context_part), dtype=tf.float32)  # (max_contexts, )
 
         assert all(tensor.shape == (self.config.MAX_CONTEXTS,) for tensor in
-                   {path_source_indices, path_indices, path_target_indices, context_valid_mask})
+                   {path_source_token_indices, path_indices, path_target_token_indices, context_valid_mask})
 
         tensors = ReaderInputTensors(
-            path_source_token_indices=path_source_indices,
+            path_source_token_indices=path_source_token_indices,
             path_indices=path_indices,
-            path_target_token_indices=path_target_indices,
+            path_target_token_indices=path_target_token_indices,
             context_valid_mask=context_valid_mask,
             target_index=target_index,
             target_string=target_str,
-            path_source_token_strings=path_source_strings,
+            path_source_token_strings=path_source_token_strings,
             path_strings=path_strings,
-            path_target_token_strings=path_target_strings
+            path_target_token_strings=path_target_token_strings
         )
 
         return self.model_input_tensors_former.to_model_input_form(tensors)
