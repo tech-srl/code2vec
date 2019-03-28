@@ -11,7 +11,8 @@ import numpy as np
 import time
 import pickle
 from functools import partial
-from common import common, VocabType, SpecialVocabWords
+from common import common, VocabType
+from vocabularies import SpecialVocabWords
 from keras_attention_layer import AttentionLayer
 from keras_word_prediction_layer import WordPredictionLayer
 from keras_words_subtoken_metrics import WordsSubtokenPrecisionMetric, WordsSubtokenRecallMetric, WordsSubtokenF1Metric
@@ -53,10 +54,10 @@ class Code2VecModel(ModelBase):
         # TODO: consider set embedding initializer or leave it default? [for 2 embeddings below and last dense layer]
 
         # Input paths are indexes, we embed these here.
-        paths_embedded = Embedding(self.path_vocab.size + 1, self.config.EMBEDDINGS_SIZE)(path_input)
+        paths_embedded = Embedding(self.vocabs.path_vocab.size + 1, self.config.EMBEDDINGS_SIZE)(path_input)
 
         # Input terminals are indexes, we embed these here.
-        token_embedding_shared_layer = Embedding(self.token_vocab.size + 1, self.config.EMBEDDINGS_SIZE)
+        token_embedding_shared_layer = Embedding(self.vocabs.token_vocab.size + 1, self.config.EMBEDDINGS_SIZE)
         path_source_token_embedded = token_embedding_shared_layer(path_source_token_input)
         path_target_token_embedded = token_embedding_shared_layer(path_target_token_input)
 
@@ -75,16 +76,16 @@ class Code2VecModel(ModelBase):
         code_vectors = AttentionLayer(name='code_vectors')(context_after_dense, mask=context_valid_mask)
 
         # "Decode": Now we use another dense layer to get the target word embedding from each code vector.
-        y_hat = Dense(self.target_vocab.size + 1, use_bias=False, activation='softmax', name='y_hat')(code_vectors)
+        y_hat = Dense(self.vocabs.target_vocab.size + 1, use_bias=False, activation='softmax', name='y_hat')(code_vectors)
 
         # Actual target word prediction (as string). Used as a second output layer.
         # `predict()` method just have to return the output of this layer.
         # Also used for the evaluation metrics calculations.
         target_word_prediction = WordPredictionLayer(
             self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION,
-            self.index_to_target_word_table,
+            self.vocabs.target_vocab.get_index_to_word_lookup_table(),
             predicted_words_filters=[
-                lambda word_indices, _: tf.not_equal(word_indices, self.target_vocab.word_to_index[SpecialVocabWords.OOV]),
+                lambda word_indices, _: tf.not_equal(word_indices, self.vocabs.target_vocab.word_to_index[SpecialVocabWords.OOV]),
                 lambda _, word_strings: tf.strings.regex_full_match(word_strings, r'^[a-zA-Z\|]+$')
             ], name='target_word_prediction')(y_hat)
 
@@ -96,10 +97,12 @@ class Code2VecModel(ModelBase):
         top_k_acc.__name__ = 'top{k}_acc'.format(k=self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION)
         metrics = {'y_hat': [
             top_k_acc,
-            WordsSubtokenPrecisionMetric(self.index_to_target_word_table, target_word_prediction,
-                                         name='subtoken_precision'),
-            WordsSubtokenRecallMetric(self.index_to_target_word_table, target_word_prediction, name='subtoken_recall'),
-            WordsSubtokenF1Metric(self.index_to_target_word_table, target_word_prediction, name='subtoken_f1')
+            WordsSubtokenPrecisionMetric(self.vocabs.target_vocab.get_index_to_word_lookup_table(),
+                                         target_word_prediction, name='subtoken_precision'),
+            WordsSubtokenRecallMetric(self.vocabs.target_vocab.get_index_to_word_lookup_table(),
+                                      target_word_prediction, name='subtoken_recall'),
+            WordsSubtokenF1Metric(self.vocabs.target_vocab.get_index_to_word_lookup_table(),
+                                  target_word_prediction, name='subtoken_f1')
         ]}
         keras_model.compile(loss={'y_hat': 'sparse_categorical_crossentropy'},
                             optimizer=tf.train.AdamOptimizer(),
@@ -108,9 +111,7 @@ class Code2VecModel(ModelBase):
 
     def _create_data_reader(self, is_evaluating: bool = False):
         return PathContextReader(
-            token_vocab=self.token_vocab,
-            path_vocab=self.path_vocab,
-            target_vocab=self.target_vocab,
+            vocabs=self.vocabs,
             config=self.config,
             model_input_tensors_former=_KerasModelInputTensorsFormer(),
             is_evaluating=is_evaluating)

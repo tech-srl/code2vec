@@ -1,11 +1,10 @@
 import tensorflow as tf
 import numpy as np
-import time
-import pickle
 import abc
 import os
 
-from common import common, VocabType, SpecialVocabWords, Vocab
+from common import common
+from vocabularies import Code2VecVocabs
 from config import Config
 
 
@@ -18,8 +17,8 @@ class ModelBase(abc.ABC):
             raise ValueError("Must train or load a model.")
 
         self._init_num_of_examples()
-        self._load_or_create_vocab_dict()
-        self._create_index_to_target_word_map()
+        self.vocabs = Code2VecVocabs.load_or_create(config)
+        self.vocabs.target_vocab.get_index_to_word_lookup_table()  # just to initialize it (if not already initialized)
         self._load_or_build_inner_model()
 
     def _init_num_of_examples(self):
@@ -43,55 +42,14 @@ class ModelBase(abc.ABC):
         print('Done')
 
     def load_or_build(self):
-        self._load_or_create_vocab_dict()
+        self.vocabs = Code2VecVocabs.load_or_create(self.config)
         self._load_or_build_inner_model()
 
-    def save(self, path=None):
-        if path is None:
-            path = self.config.MODEL_SAVE_PATH
-        self._save_vocab_dict(path)
-        self._save_inner_model(path)
-
-    def _load_or_create_vocab_dict(self):
-        if self.config.TRAIN_DATA_PATH and not self.config.MODEL_LOAD_PATH:
-            with open('{}.dict.c2v'.format(self.config.TRAIN_DATA_PATH), 'rb') as file:
-                token_to_count = pickle.load(file)
-                path_to_count = pickle.load(file)
-                target_to_count = pickle.load(file)
-            print('Word frequencies dictionaries loaded. Now creating vocabularies.')
-            self.token_vocab = Vocab.create_from_freq_dict(
-                token_to_count, self.config.MAX_TOKEN_VOCAB_SIZE,
-                special_words=[SpecialVocabWords.PAD, SpecialVocabWords.OOV])
-            print('Created token vocab. size: %d' % self.token_vocab.size)
-            self.path_vocab = Vocab.create_from_freq_dict(
-                path_to_count, self.config.MAX_PATH_VOCAB_SIZE,
-                special_words=[SpecialVocabWords.PAD, SpecialVocabWords.OOV])
-            print('Created path vocab. size: %d' % self.path_vocab.size)
-            self.target_vocab = Vocab.create_from_freq_dict(
-                target_to_count, self.config.MAX_TARGET_VOCAB_SIZE,
-                special_words=[SpecialVocabWords.OOV])
-            print('Created target vocab. size: %d' % self.target_vocab.size)
-        else:
-            vocabularies_path = self._get_vocabularies_path(self.config.MODEL_LOAD_PATH)
-            with open(vocabularies_path, 'rb') as file:
-                print('Loading model vocabularies from: %s ... ' % vocabularies_path, end='')
-                self.token_vocab = pickle.load(file)
-                self.path_vocab = pickle.load(file)
-                self.target_vocab = pickle.load(file)
-                print('Done')
-
-    def _save_vocab_dict(self, path):
-        with open(self._get_vocabularies_path(path), 'wb') as file:
-            pickle.dump(self.token_vocab, file)
-            pickle.dump(self.path_vocab, file)
-            pickle.dump(self.target_vocab, file)
-
-    def _create_index_to_target_word_map(self):
-        self.index_to_target_word_table = tf.contrib.lookup.HashTable(
-            tf.contrib.lookup.KeyValueTensorInitializer(list(self.target_vocab.index_to_word.keys()),
-                                                        list(self.target_vocab.index_to_word.values()),
-                                                        key_dtype=tf.int64, value_dtype=tf.string),
-            default_value=tf.constant(SpecialVocabWords.OOV, dtype=tf.string))
+    def save(self, model_save_path=None):
+        if model_save_path is None:
+            model_save_path = self.config.MODEL_SAVE_PATH
+        self.vocabs.save(self.config.get_vocabularies_path_from_model_path(model_save_path))
+        self._save_inner_model(model_save_path)
 
     def _write_code_vectors(self, file, code_vectors):
         for vec in code_vectors:

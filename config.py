@@ -82,3 +82,12 @@ class Config:
 
     def batch_size(self, is_evaluating: bool = False):
         return self.TEST_BATCH_SIZE if is_evaluating else self.TRAIN_BATCH_SIZE  # take min with NUM_TRAIN_EXAMPLES?
+
+    @property
+    def word_freq_dict_path(self) -> str:
+        return '{}.dict.c2v'.format(self.TRAIN_DATA_PATH)
+
+    @staticmethod
+    def get_vocabularies_path_from_model_path(model_file_path):
+        vocabularies_save_file_name = "vocabularies.bin"
+        return '/'.join(model_file_path.split('/')[:-1] + [vocabularies_save_file_name])

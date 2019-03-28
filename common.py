@@ -1,35 +1,8 @@
 import re
-import json
-import sys
 from enum import Enum
 import tensorflow as tf
-from itertools import takewhile, repeat, chain
-from typing import Optional, Dict, Iterable
-
-
-class SpecialVocabWords:
-    PAD = '<PAD>'  # padding
-    OOV = '<OOV>'  # out-of-vocabulary
-
-
-class Vocab:
-    def __init__(self, words: Optional[Iterable[str]] = None):
-        self.word_to_index: Dict[str, int] = {}
-        self.index_to_word: Dict[int, str] = {}
-
-        for index, word in enumerate(words):
-            self.word_to_index[word] = index
-            self.index_to_word[index] = word
-
-        self.size = len(self.word_to_index)
-
-    @classmethod
-    def create_from_freq_dict(cls, word_to_count: Dict[str, int], max_size: int,
-                              special_words: Optional[Iterable[str]] = None):
-        sorted_counts = sorted(word_to_count, key=word_to_count.get, reverse=True)
-        limited_sorted = sorted_counts[:max_size]
-        all_words = chain(special_words, limited_sorted)
-        return cls(all_words)
+from itertools import takewhile, repeat
+from vocabularies import SpecialVocabWords
 
 
 class common:
