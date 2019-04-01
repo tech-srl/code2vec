@@ -1,2 +1,4 @@
 *.class
 *.lst
+/models/
+__pycache__
