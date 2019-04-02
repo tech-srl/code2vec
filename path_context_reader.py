@@ -66,7 +66,10 @@ class PathContextReader:
             self.config.data_path(is_evaluating=self.is_evaluating), record_defaults=self.csv_record_defaults,
             field_delim=' ', use_quote_delim=False, buffer_size=self.config.CSV_BUFFER_SIZE)
 
-        if not self.is_evaluating:
+        if self.is_evaluating:
+            # FIXME: make the repeat() work also when evaluating but during training (eval after every epoch).
+            dataset = dataset.repeat()
+        else:
             if self.config.NUM_EPOCHS > 1:
                 dataset = dataset.repeat(self.config.NUM_EPOCHS)
             dataset = dataset.shuffle(self.config.SHUFFLE_BUFFER_SIZE, reshuffle_each_iteration=True)

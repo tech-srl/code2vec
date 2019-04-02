@@ -1,6 +1,7 @@
 from itertools import chain
 from typing import Optional, Dict, Iterable, Tuple
 import pickle
+import os
 from config import Config
 import tensorflow as tf
 
@@ -11,7 +12,7 @@ class SpecialVocabWords:
 
 
 class Vocab:
-    def __init__(self, words: Optional[Iterable[str]] = None):
+    def __init__(self, words: Iterable[str]):
         self.word_to_index: Dict[str, int] = {}
         self.index_to_word: Dict[int, str] = {}
         self._word_to_index_lookup_table = None
@@ -22,6 +23,18 @@ class Vocab:
             self.index_to_word[index] = word
 
         self.size = len(self.word_to_index)
+
+    def save_to_file(self, file):
+        pickle.dump((self.word_to_index, self.index_to_word), file)
+
+    @classmethod
+    def load_from_file(cls, file) -> 'Vocab':
+        word_to_index, index_to_word = pickle.load(file)
+        vocab = cls([])
+        vocab.word_to_index = word_to_index
+        vocab.index_to_word = index_to_word
+        vocab.size = len(word_to_index)
+        return vocab
 
     @classmethod
     def create_from_freq_dict(cls, word_to_count: Dict[str, int], max_size: int,
@@ -73,23 +86,31 @@ class Code2VecVocabs:
         self.token_vocab: Vocab = token_vocab
         self.path_vocab: Vocab = path_vocab
         self.target_vocab: Vocab = target_vocab
+        self._already_saved_in_paths = set()
 
     @classmethod
     def load_or_create(cls, config: Config) -> 'Code2VecVocabs':
-        if config.TRAIN_DATA_PATH and not config.MODEL_LOAD_PATH:
+        vocabularies_load_path = None
+        if not config.TRAIN_DATA_PATH_PREFIX or config.MODEL_LOAD_PATH:
+            vocabularies_load_path = config.get_vocabularies_path_from_model_path(config.MODEL_LOAD_PATH)
+            if not os.path.isfile(vocabularies_load_path):
+                vocabularies_load_path = None
+        if vocabularies_load_path is None:
             return cls.create(config)
         else:
-            return cls.load(config.get_vocabularies_path_from_model_path(config.MODEL_LOAD_PATH))
+            return cls.load(vocabularies_load_path)
 
     @classmethod
     def load(cls, vocabularies_load_path: str) -> 'Code2VecVocabs':
         with open(vocabularies_load_path, 'rb') as file:
             print('Loading model vocabularies from: %s ... ' % vocabularies_load_path, end='')
-            token_vocab = pickle.load(file)
-            path_vocab = pickle.load(file)
-            target_vocab = pickle.load(file)
-            print('Done')
-            return cls(token_vocab, path_vocab, target_vocab)
+            token_vocab = Vocab.load_from_file(file)
+            path_vocab = Vocab.load_from_file(file)
+            target_vocab = Vocab.load_from_file(file)
+        print('Done')
+        vocabs = cls(token_vocab, path_vocab, target_vocab)
+        vocabs._already_saved_in_paths.add(vocabularies_load_path)
+        return vocabs
 
     @classmethod
     def create(cls, config: Config) -> 'Code2VecVocabs':
@@ -107,10 +128,13 @@ class Code2VecVocabs:
         return cls(token_vocab, path_vocab, target_vocab)
 
     def save(self, vocabularies_save_path: str):
+        if vocabularies_save_path in self._already_saved_in_paths:
+            return
         with open(vocabularies_save_path, 'wb') as file:
-            pickle.dump(self.token_vocab, file)
-            pickle.dump(self.path_vocab, file)
-            pickle.dump(self.target_vocab, file)
+            self.token_vocab.save_to_file(file)
+            self.path_vocab.save_to_file(file)
+            self.target_vocab.save_to_file(file)
+        self._already_saved_in_paths.add(vocabularies_save_path)
 
     @staticmethod
     def _load_word_freq_dict(path: str) -> Tuple[WordFreqDictType, WordFreqDictType, WordFreqDictType]:

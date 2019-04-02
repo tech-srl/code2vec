@@ -27,7 +27,7 @@ class Config:
         config.CSV_BUFFER_SIZE = 100 * 1024 * 1024  # 100 MB
 
         # Automatically filled, do not edit:
-        config.TRAIN_DATA_PATH = args.data_path
+        config.TRAIN_DATA_PATH_PREFIX = args.data_path
         config.TEST_DATA_PATH = args.test_path
         config.MODEL_SAVE_PATH = args.save_path
         config.MODEL_LOAD_PATH = args.load_path
@@ -60,14 +60,14 @@ class Config:
         # Automatically filled by `args`.
         self.MODEL_SAVE_PATH: str = ''
         self.MODEL_LOAD_PATH: str = ''
-        self.TRAIN_DATA_PATH: str = ''
+        self.TRAIN_DATA_PATH_PREFIX: str = ''
         self.TEST_DATA_PATH: str = ''
         self.RELEASE: bool = False
         self.EXPORT_CODE_VECTORS: bool = False
 
         # Automatically filled by `ModelBase.__init__()`.
         self.NUM_TRAIN_EXAMPLES: int = 0
-        self.NUM_TEST_EXAMPLES: int = 0   # TODO: fix its calculation in `ModelBase.__init__()`!
+        self.NUM_TEST_EXAMPLES: int = 0
 
     @property
     def train_steps_per_epoch(self) -> int:
@@ -78,16 +78,44 @@ class Config:
         return ceil(self.NUM_TEST_EXAMPLES / self.TEST_BATCH_SIZE)
 
     def data_path(self, is_evaluating: bool = False):
-        return self.TEST_DATA_PATH if is_evaluating else (self.TRAIN_DATA_PATH + '.train.c2v')
+        return self.TEST_DATA_PATH if is_evaluating else self.train_data_path
 
     def batch_size(self, is_evaluating: bool = False):
         return self.TEST_BATCH_SIZE if is_evaluating else self.TRAIN_BATCH_SIZE  # take min with NUM_TRAIN_EXAMPLES?
 
     @property
-    def word_freq_dict_path(self) -> str:
-        return '{}.dict.c2v'.format(self.TRAIN_DATA_PATH)
+    def train_data_path(self):
+        return '{}.train.c2v'.format(self.TRAIN_DATA_PATH_PREFIX)
 
-    @staticmethod
-    def get_vocabularies_path_from_model_path(model_file_path):
+    @property
+    def word_freq_dict_path(self) -> str:
+        return '{}.dict.c2v'.format(self.TRAIN_DATA_PATH_PREFIX)
+
+    @classmethod
+    def get_vocabularies_path_from_model_path(cls, model_file_path: str):
         vocabularies_save_file_name = "vocabularies.bin"
         return '/'.join(model_file_path.split('/')[:-1] + [vocabularies_save_file_name])
+
+    @classmethod
+    def get_full_model_path(cls, model_path: str):
+        return model_path + '-full'
+
+    @classmethod
+    def get_model_weights_path(cls, model_path: str):
+        return model_path + '-only-weights'
+
+    @property
+    def full_model_load_path(self):
+        return self.get_full_model_path(self.MODEL_LOAD_PATH)
+
+    @property
+    def model_weights_load_path(self):
+        return self.get_model_weights_path(self.MODEL_LOAD_PATH)
+
+    @property
+    def full_model_save_path(self):
+        return self.get_full_model_path(self.MODEL_SAVE_PATH)
+
+    @property
+    def model_weights_save_path(self):
+        return self.get_model_weights_path(self.MODEL_SAVE_PATH)

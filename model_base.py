@@ -11,39 +11,38 @@ from config import Config
 class ModelBase(abc.ABC):
     def __init__(self, config: Config):
         self.config = config
-        self.sess = tf.Session()
 
-        if not config.TRAIN_DATA_PATH and not config.MODEL_LOAD_PATH:
+        if not config.TRAIN_DATA_PATH_PREFIX and not config.MODEL_LOAD_PATH:
             raise ValueError("Must train or load a model.")
 
         self._init_num_of_examples()
         self.vocabs = Code2VecVocabs.load_or_create(config)
         self.vocabs.target_vocab.get_index_to_word_lookup_table()  # just to initialize it (if not already initialized)
-        self._load_or_build_inner_model()
+        self._load_or_create_inner_model()
 
     def _init_num_of_examples(self):
         print('Checking number of examples ... ', end='')
-        if self.config.TRAIN_DATA_PATH:
-            if os.path.isfile(self.config.TRAIN_DATA_PATH + '.train.c2v.num_examples'):
-                with open(self.config.TRAIN_DATA_PATH + '.train.c2v.num_examples', 'r') as file:
-                    self.config.NUM_TRAIN_EXAMPLES = int(file.readline())
-            else:
-                self.config.NUM_TRAIN_EXAMPLES = common.rawincount(self.config.TRAIN_DATA_PATH + '.train.c2v')
-                with open(self.config.TRAIN_DATA_PATH + '.train.c2v.num_examples', 'w') as file:
-                    file.write(str(self.config.NUM_TRAIN_EXAMPLES))
+        if self.config.TRAIN_DATA_PATH_PREFIX:
+            self.config.NUM_TRAIN_EXAMPLES = self._get_num_of_examples_for_dataset(self.config.train_data_path)
         if self.config.TEST_DATA_PATH:
-            if os.path.isfile(self.config.TEST_DATA_PATH + '.num_examples'):
-                with open(self.config.TEST_DATA_PATH + '.num_examples', 'r') as file:
-                    self.config.NUM_TEST_EXAMPLES = int(file.readline())
-            else:
-                self.config.NUM_TEST_EXAMPLES = common.rawincount(self.config.TEST_DATA_PATH)
-                with open(self.config.TEST_DATA_PATH + '.num_examples', 'w') as file:
-                    file.write(str(self.config.NUM_TEST_EXAMPLES))
+            self.config.NUM_TEST_EXAMPLES = self._get_num_of_examples_for_dataset(self.config.TEST_DATA_PATH)
         print('Done')
+
+    @staticmethod
+    def _get_num_of_examples_for_dataset(dataset_path: str) -> int:
+        dataset_num_examples_file_path = dataset_path + '.num_examples'
+        if os.path.isfile(dataset_num_examples_file_path):
+            with open(dataset_num_examples_file_path, 'r') as file:
+                num_examples_in_dataset = int(file.readline())
+        else:
+            num_examples_in_dataset = common.rawincount(dataset_path)
+            with open(dataset_num_examples_file_path, 'w') as file:
+                file.write(str(num_examples_in_dataset))
+        return num_examples_in_dataset
 
     def load_or_build(self):
         self.vocabs = Code2VecVocabs.load_or_create(self.config)
-        self._load_or_build_inner_model()
+        self._load_or_create_inner_model()
 
     def save(self, model_save_path=None):
         if model_save_path is None:
@@ -65,7 +64,9 @@ class ModelBase(abc.ABC):
         return attention_per_context
 
     def close_session(self):
-        self.sess.close()
+        # can be overridden by the implementation model class.
+        # default implementation just does nothing.
+        pass
 
     @abc.abstractmethod
     def train(self):
@@ -79,23 +80,25 @@ class ModelBase(abc.ABC):
     def predict(self, predict_data_lines):
         ...
 
-    @staticmethod
-    def _get_vocabularies_path(model_file_path):
-        vocabularies_save_file_name = "vocabularies.bin"
-        return '/'.join(model_file_path.split('/')[:-1] + [vocabularies_save_file_name])
-
     @abc.abstractmethod
     def _save_inner_model(self, path):
         ...
 
+    def _load_or_create_inner_model(self):
+        if self.config.MODEL_LOAD_PATH:
+            self._load_inner_model()
+        else:
+            self._create_inner_model()
+
     @abc.abstractmethod
-    def _load_or_build_inner_model(self):
+    def _load_inner_model(self):
         ...
+
+    def _create_inner_model(self):
+        # can be overridden by the implementation model class.
+        # default implementation just does nothing.
+        pass
 
     @abc.abstractmethod
     def save_word2vec_format(self, dest, source):
         ...
-
-    def initialize_variables(self):
-        self.sess.run(tf.group(tf.global_variables_initializer(), tf.local_variables_initializer(), tf.tables_initializer()))
-        print('Initalized variables')

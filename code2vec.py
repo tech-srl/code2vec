@@ -48,7 +48,7 @@ if __name__ == '__main__':
 
     model = load_model_dynamically(config)
     print('Created model')
-    if config.TRAIN_DATA_PATH:
+    if config.TRAIN_DATA_PATH_PREFIX:
         model.train()
     if args.save_w2v is not None:
         model.save_word2vec_format(args.save_w2v, source=VocabType.Token)
