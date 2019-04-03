@@ -2,8 +2,15 @@ from itertools import chain
 from typing import Optional, Dict, Iterable, Tuple
 import pickle
 import os
+from enum import Enum
 from config import Config
 import tensorflow as tf
+
+
+class VocabType(Enum):
+    Token = 1
+    Target = 2
+    Path = 3
 
 
 class SpecialVocabWords:
@@ -86,6 +93,11 @@ class Code2VecVocabs:
         self.token_vocab: Vocab = token_vocab
         self.path_vocab: Vocab = path_vocab
         self.target_vocab: Vocab = target_vocab
+        self._vocab_type_to_vocab_mapping = {
+            VocabType.Token: self.token_vocab,
+            VocabType.Target: self.target_vocab,
+            VocabType.Path: self.path_vocab
+        }
         self._already_saved_in_paths = set()
 
     @classmethod
@@ -146,3 +158,8 @@ class Code2VecVocabs:
         print('Done.')
         # assert all(isinstance(item, WordFreqDictType) for item in {token_to_count, path_to_count, target_to_count})
         return token_to_count, path_to_count, target_to_count
+
+    def get(self, vocab_type: VocabType) -> Vocab:
+        if vocab_type not in self._vocab_type_to_vocab_mapping:
+            raise ValueError('`vocab_type` should be `VocabType.Token`, `VocabType.Target` or `VocabType.Path`.')
+        return self._vocab_type_to_vocab_mapping[vocab_type]

@@ -1,4 +1,4 @@
-from common import VocabType
+from vocabularies import VocabType
 from config import Config
 from argparse import ArgumentParser
 from interactive_predict import InteractivePredictor

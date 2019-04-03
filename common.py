@@ -1,5 +1,5 @@
 import re
-from enum import Enum
+import numpy as np
 import tensorflow as tf
 from itertools import takewhile, repeat
 from vocabularies import SpecialVocabWords
@@ -78,12 +78,15 @@ class common:
                     yield (element, scope)
 
     @staticmethod
-    def save_word2vec_file(file, vocab_size, dimension, index_to_word, vectors):
-        file.write('%d %d\n' % (vocab_size, dimension))
-        for i in range(1, vocab_size + 1):
-            if i in index_to_word:
-                file.write(index_to_word[i] + ' ')
-                file.write(' '.join(map(str, vectors[i])) + '\n')
+    def save_word2vec_file(output_file, index_to_word, vocab_embedding_matrix: np.ndarray):
+        assert len(vocab_embedding_matrix.shape) == 2
+        vocab_size, embedding_dimension = vocab_embedding_matrix.shape
+        output_file.write('%d %d\n' % (vocab_size, embedding_dimension))
+        for word_idx in range(0, vocab_size):
+            assert word_idx in index_to_word
+            word_str = index_to_word[word_idx]
+            output_file.write(word_str + ' ')
+            output_file.write(' '.join(map(str, vocab_embedding_matrix[word_idx])) + '\n')
 
     @staticmethod
     def calculate_max_contexts(file):
@@ -176,8 +179,3 @@ class PredictionResults:
                                      'path': path,
                                      'token1': token1,
                                      'token2': token2})
-
-
-class VocabType(Enum):
-    Token = 1
-    Target = 2

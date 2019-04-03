@@ -1,10 +1,9 @@
-import tensorflow as tf
 import numpy as np
 import abc
 import os
 
 from common import common
-from vocabularies import Code2VecVocabs
+from vocabularies import Code2VecVocabs, VocabType
 from config import Config
 
 
@@ -100,5 +99,13 @@ class ModelBase(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def save_word2vec_format(self, dest, source):
+    def _get_vocab_embedding_as_np_array(self, vocab_type: VocabType) -> np.ndarray:
         ...
+
+    def save_word2vec_format(self, dest_save_path: str, vocab_type: VocabType):
+        if vocab_type not in VocabType:
+            raise ValueError('`vocab_type` should be `VocabType.Token`, `VocabType.Target` or `VocabType.Path`.')
+        vocab_embedding_matrix = self._get_vocab_embedding_as_np_array(vocab_type)
+        index_to_word = self.vocabs.get(vocab_type).index_to_word
+        with open(dest_save_path, 'w') as words_file:
+            common.save_word2vec_file(words_file, index_to_word, vocab_embedding_matrix)

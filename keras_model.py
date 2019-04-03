@@ -8,12 +8,9 @@ from tensorflow.python.keras.metrics import sparse_top_k_categorical_accuracy
 from path_context_reader import PathContextReader, ModelInputTensorsFormer, ReaderInputTensors
 import os
 import numpy as np
-import time
-import pickle
 from functools import partial
 from typing import List, Optional
-from common import common, VocabType
-from vocabularies import SpecialVocabWords
+from vocabularies import SpecialVocabWords, VocabType
 from keras_attention_layer import AttentionLayer
 from keras_word_prediction_layer import WordPredictionLayer
 from keras_words_subtoken_metrics import WordsSubtokenPrecisionMetric, WordsSubtokenRecallMetric, WordsSubtokenF1Metric
@@ -80,10 +77,12 @@ class Code2VecModel(ModelBase):
         # TODO: consider set embedding initializer or leave it default? [for 2 embeddings below and last dense layer]
 
         # Input paths are indexes, we embed these here.
-        paths_embedded = Embedding(self.vocabs.path_vocab.size, self.config.EMBEDDINGS_SIZE)(path_input)
+        paths_embedded = Embedding(
+            self.vocabs.path_vocab.size, self.config.PATH_EMBEDDINGS_SIZE, name='path_embedding')(path_input)
 
         # Input terminals are indexes, we embed these here.
-        token_embedding_shared_layer = Embedding(self.vocabs.token_vocab.size, self.config.EMBEDDINGS_SIZE)
+        token_embedding_shared_layer = Embedding(
+            self.vocabs.token_vocab.size, self.config.TOKEN_EMBEDDINGS_SIZE, name='token_embedding')
         path_source_token_embedded = token_embedding_shared_layer(path_source_token_input)
         path_target_token_embedded = token_embedding_shared_layer(path_target_token_input)
 
@@ -94,9 +93,7 @@ class Code2VecModel(ModelBase):
 
         # Lets get dense: Apply a dense layer for each context vector (using same weights for all of the context).
         context_after_dense = TimeDistributed(
-            Dense(self.config.EMBEDDINGS_SIZE * 3, input_dim=self.config.EMBEDDINGS_SIZE * 3,
-                  use_bias=False, activation='tanh')
-        )(context_embedded)
+            Dense(self.config.CODE_VECTOR_SIZE, use_bias=False, activation='tanh'))(context_embedded)
 
         # The final code vectors are received by applying attention to the "densed" context vectors.
         code_vectors = AttentionLayer(name='code_vectors')(context_after_dense, mask=context_valid_mask)
@@ -242,8 +239,25 @@ class Code2VecModel(ModelBase):
                 self._get_checkpoint(), self.config.full_model_save_path, max_to_keep=self.config.MAX_TO_KEEP)
         return self._save_checkpoint_manager
 
-    def save_word2vec_format(self, dest, source):
-        raise NotImplemented()  # TODO: implement!
+    def _get_vocab_embedding_as_np_array(self, vocab_type: VocabType) -> np.ndarray:
+        assert vocab_type in VocabType
+
+        vocab_type_to_embedding_layer_mapping = {
+            VocabType.Target: 'y_hat',
+            VocabType.Token: 'token_embedding',
+            VocabType.Path: 'path_embedding'
+        }
+        embedding_layer_name = vocab_type_to_embedding_layer_mapping[vocab_type]
+        weight = np.array(self.keras_model.get_layer(embedding_layer_name).get_weights()[0])
+        assert len(weight.shape) == 2
+
+        # token, path have an actual `Embedding` layers, but target have just a `Dense` layer.
+        # hence, transpose the weight when necessary.
+        assert self.vocabs.get(vocab_type).size in weight.shape
+        if self.vocabs.get(vocab_type).size != weight.shape[0]:
+            weight = np.transpose(weight)
+
+        return weight
 
     def initialize_tables(self):
         K.get_session().run(tf.tables_initializer())

@@ -18,11 +18,16 @@ class Config:
         config.MAX_TARGET_VOCAB_SIZE = 261245
         config.MAX_PATH_VOCAB_SIZE = 911417
         config.EMBEDDINGS_SIZE = 128
+        config.TOKEN_EMBEDDINGS_SIZE = config.EMBEDDINGS_SIZE
+        config.PATH_EMBEDDINGS_SIZE = config.EMBEDDINGS_SIZE
+        config.TARGET_EMBEDDINGS_SIZE = config.EMBEDDINGS_SIZE
+        config.CONTEXT_EMBEDDINGS_SIZE = config.PATH_EMBEDDINGS_SIZE + 2 * config.TOKEN_EMBEDDINGS_SIZE
+        config.CODE_VECTOR_SIZE = config.CONTEXT_EMBEDDINGS_SIZE
         config.MAX_TO_KEEP = 10
         config.DROPOUT_KEEP_RATE = 0.75
         config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION = 10
 
-        config.READER_NUM_PARALLEL_BATCHES = 6  # cpu cores [for tf.contrib.data.map_and_batch()]
+        config.READER_NUM_PARALLEL_BATCHES = 6  # cpu cores [for tf.contrib.data.map_and_batch() in the reader]
         config.SHUFFLE_BUFFER_SIZE = 10000
         config.CSV_BUFFER_SIZE = 100 * 1024 * 1024  # 100 MB
 
@@ -49,6 +54,11 @@ class Config:
         self.MAX_TARGET_VOCAB_SIZE: int = 0
         self.MAX_PATH_VOCAB_SIZE: int = 0
         self.EMBEDDINGS_SIZE: int = 0
+        self.TOKEN_EMBEDDINGS_SIZE: int = 0
+        self.PATH_EMBEDDINGS_SIZE: int = 0
+        self.TARGET_EMBEDDINGS_SIZE: int = 0
+        self.CONTEXT_EMBEDDINGS_SIZE: int = 0
+        self.CODE_VECTOR_SIZE: int = 0
         self.MAX_TO_KEEP: int = 0
         self.DROPOUT_KEEP_RATE: float = 0
         self.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION: int = 0
@@ -65,7 +75,7 @@ class Config:
         self.RELEASE: bool = False
         self.EXPORT_CODE_VECTORS: bool = False
 
-        # Automatically filled by `ModelBase.__init__()`.
+        # Automatically filled by `ModelBase._init_num_of_examples()`.
         self.NUM_TRAIN_EXAMPLES: int = 0
         self.NUM_TEST_EXAMPLES: int = 0
 
