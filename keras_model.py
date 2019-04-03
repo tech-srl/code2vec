@@ -151,17 +151,18 @@ class Code2VecModel(ModelBase):
             optimizer=optimizer,
             metrics={'y_hat': self._create_metrics_for_keras_model()})
 
-    def _create_data_reader(self, is_evaluating: bool = False):
+    def _create_data_reader(self, is_evaluating: bool = False, repeat_endlessly: bool = False):
         return PathContextReader(
             vocabs=self.vocabs,
             config=self.config,
             model_input_tensors_former=_KerasModelInputTensorsFormer(is_evaluating=is_evaluating),
-            is_evaluating=is_evaluating)
+            is_evaluating=is_evaluating,
+            repeat_endlessly=repeat_endlessly)
 
     def train(self):
         # initialize the input pipeline readers
         train_data_input_reader = self._create_data_reader(is_evaluating=False)
-        val_data_input_reader = self._create_data_reader(is_evaluating=True)
+        val_data_input_reader = self._create_data_reader(is_evaluating=True, repeat_endlessly=True)
         self.initialize_tables()
 
         # TODO: do we want to use early stopping? if so, use the right chechpoint manager and set the correct

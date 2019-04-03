@@ -38,11 +38,13 @@ class PathContextReader:
                  vocabs: Code2VecVocabs,
                  config: Config,
                  model_input_tensors_former: ModelInputTensorsFormer,
-                 is_evaluating: bool = False):
+                 is_evaluating: bool = False,
+                 repeat_endlessly: bool = False):
         self.vocabs = vocabs
         self.config = config
         self.model_input_tensors_former = model_input_tensors_former
         self.is_evaluating = is_evaluating
+        self.repeat_endlessly = repeat_endlessly
         self.csv_record_defaults = [[SpecialVocabWords.OOV]] + ([[self.CONTEXT_PADDING]] * self.config.MAX_CONTEXTS)
 
         # initialize the needed lookup tables (if not already initialized).
@@ -66,11 +68,10 @@ class PathContextReader:
             self.config.data_path(is_evaluating=self.is_evaluating), record_defaults=self.csv_record_defaults,
             field_delim=' ', use_quote_delim=False, buffer_size=self.config.CSV_BUFFER_SIZE)
 
-        if self.is_evaluating:
-            # FIXME: make the repeat() work also when evaluating but during training (eval after every epoch).
+        if self.repeat_endlessly:
             dataset = dataset.repeat()
         else:
-            if self.config.NUM_EPOCHS > 1:
+            if not self.repeat_endlessly and self.config.NUM_EPOCHS > 1:
                 dataset = dataset.repeat(self.config.NUM_EPOCHS)
             dataset = dataset.shuffle(self.config.SHUFFLE_BUFFER_SIZE, reshuffle_each_iteration=True)
 
