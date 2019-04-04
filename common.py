@@ -142,7 +142,7 @@ class common:
                     continue
                 suggestion_subtokens = common.get_subtokens(predicted)
                 current_method_prediction_results.append_prediction(
-                    suggestion_subtokens, single_method_prediction.topk_scores[i].item())
+                    suggestion_subtokens, single_method_prediction.topk_predicted_words_scores[i].item())
             topk_attention_per_context = [
                 (key, single_method_prediction.attention_per_context[key])
                 for key in sorted(single_method_prediction.attention_per_context,
@@ -168,6 +168,14 @@ class common:
         with open(file_path, 'rb') as f:
             bufgen = takewhile(lambda x: x, (f.raw.read(1024 * 1024) for _ in repeat(None)))
             return sum(buf.count(b'\n') for buf in bufgen)
+
+    @staticmethod
+    def squeeze_single_batch_dimension_for_np_arrays(arrays):
+        assert all(array is None or isinstance(array, np.ndarray) for array in arrays)
+        return tuple(
+            None if array is None else np.squeeze(array, axis=0)
+            for array in arrays
+        )
 
 
 class MethodPredictionResults:

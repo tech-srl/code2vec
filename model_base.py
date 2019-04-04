@@ -1,8 +1,7 @@
 import numpy as np
 import abc
 import os
-from typing import NamedTuple, Optional, List, Dict, Tuple
-from enum import Enum
+from typing import NamedTuple, Optional, List, Dict, Tuple, Iterable
 
 from common import common
 from vocabularies import Code2VecVocabs, VocabType
@@ -30,15 +29,9 @@ class ModelEvaluationResults(NamedTuple):
 class ModelPredictionResults(NamedTuple):
     original_name: str
     topk_predicted_words: np.ndarray
-    topk_scores: np.ndarray
+    topk_predicted_words_scores: np.ndarray
     attention_per_context: Dict[Tuple[str, str, str], float]
     code_vector: Optional[np.ndarray] = None
-
-
-class EstimatorMode(Enum):
-    Train = 'train'
-    Evaluate = 'evaluate'
-    Predict = 'predict'
 
 
 class Code2VecModelBase(abc.ABC):
@@ -88,8 +81,9 @@ class Code2VecModelBase(abc.ABC):
         for vec in code_vectors:
             file.write(' '.join(map(str, vec)) + '\n')
 
-    def _get_attention_per_context(self, path_source_strings, path_strings, path_target_strings, attention_weights) -> \
-            Dict[Tuple[str, str, str], float]:
+    def _get_attention_weight_per_context(
+            self, path_source_strings: Iterable[str], path_strings: Iterable[str], path_target_strings: Iterable[str],
+            attention_weights: Iterable[float]) -> Dict[Tuple[str, str, str], float]:
         attention_weights = np.squeeze(attention_weights, axis=-1)  # (max_contexts, )
         attention_per_context: Dict[Tuple[str, str, str], float] = {}
         # shape of path_source_strings, path_strings, path_target_strings, attention_weights is (max_contexts, )
@@ -117,7 +111,7 @@ class Code2VecModelBase(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def predict(self, predict_data_lines) -> List[ModelPredictionResults]:
+    def predict(self, predict_data_lines: Iterable[str]) -> List[ModelPredictionResults]:
         ...
 
     @abc.abstractmethod

@@ -5,17 +5,20 @@ import tensorflow.python.keras.backend as K
 from tensorflow.python.keras.callbacks import Callback
 from tensorflow.python.keras.metrics import sparse_top_k_categorical_accuracy
 
-from path_context_reader import PathContextReader, ModelInputTensorsFormer, ReaderInputTensors
+from path_context_reader import PathContextReader, ModelInputTensorsFormer, ReaderInputTensors, EstimatorAction
 import os
 import numpy as np
 from functools import partial
-from typing import List, Optional
+from typing import List, Optional, Iterable
+from collections import namedtuple
 from vocabularies import SpecialVocabWords, VocabType
 from keras_attention_layer import AttentionLayer
 from keras_word_prediction_layer import WordPredictionLayer
+from keras_topk_word_predictions_layer import TopKWordPredictionsLayer
 from keras_words_subtoken_metrics import WordsSubtokenPrecisionMetric, WordsSubtokenRecallMetric, WordsSubtokenF1Metric
 from config import Config
-from model_base import Code2VecModelBase, ModelEvaluationResults, EstimatorMode
+from common import common
+from model_base import Code2VecModelBase, ModelEvaluationResults, ModelPredictionResults
 
 
 class ModelCheckpointSaverCallback(Callback):
@@ -34,41 +37,44 @@ class ModelCheckpointSaverCallback(Callback):
 
 
 class _KerasModelInputTensorsFormer(ModelInputTensorsFormer):
-    def __init__(self, estimator_mode: EstimatorMode):
-        self.estimator_mode = estimator_mode
+    def __init__(self, estimator_action: EstimatorAction):
+        self.estimator_action = estimator_action
 
     def to_model_input_form(self, input_tensors: ReaderInputTensors):
         inputs = (input_tensors.path_source_token_indices, input_tensors.path_indices,
                   input_tensors.path_target_token_indices, input_tensors.context_valid_mask)
-        if self.estimator_mode is EstimatorMode.Predict:
-            return inputs
         targets = {'y_hat': input_tensors.target_index}
-        if self.estimator_mode is EstimatorMode.Evaluate:
+        if self.estimator_action.is_evaluate_or_predict:
             targets['true_target_word'] = input_tensors.target_string
+        if self.estimator_action.is_predict:
+            inputs += (input_tensors.path_source_token_strings, input_tensors.path_strings,
+                       input_tensors.path_target_token_strings)
         return inputs, targets
 
     def from_model_input_form(self, input_row) -> ReaderInputTensors:
-        target_index, target_string = None, None
-        if self.estimator_mode is EstimatorMode.Predict:
-            inputs = input_row
-        else:
-            inputs = input_row[0]
-            targets = input_row[1]
-            target_index = targets['y_hat']
-            target_string = (targets['true_target_word'] if self.estimator_mode is EstimatorMode.Evaluate else None)
+        inputs, targets = input_row
         return ReaderInputTensors(
             path_source_token_indices=inputs[0],
             path_indices=inputs[1],
             path_target_token_indices=inputs[2],
             context_valid_mask=inputs[3],
-            target_index=target_index,
-            target_string=target_string
+            target_index=targets['y_hat'],
+            target_string=targets['true_target_word'] if self.estimator_action.is_evaluate_or_predict else None,
+            path_source_token_strings=inputs[4] if self.estimator_action.is_predict else None,
+            path_strings=inputs[5] if self.estimator_action.is_predict else None,
+            path_target_token_strings=inputs[6] if self.estimator_action.is_predict else None
         )
+
+
+KerasPredictionModelOutput = namedtuple(
+    'KerasModelOutput', ['y_hat', 'code_vectors', 'attention_weights',
+                         'topk_predicted_words', 'topk_predicted_words_scores'])
 
 
 class Code2VecModel(Code2VecModelBase):
     def __init__(self, config: Config):
         self.keras_model: Optional[keras.Model] = None
+        self.keras_model_predict_function: Optional[K.GraphExecutionFunction] = None
         self.nr_epochs_trained: int = 0
         self._checkpoint: Optional[tf.train.Checkpoint] = None
         self._save_checkpoint_manager: Optional[tf.train.CheckpointManager] = None
@@ -104,7 +110,8 @@ class Code2VecModel(Code2VecModelBase):
             Dense(self.config.CODE_VECTOR_SIZE, use_bias=False, activation='tanh'))(context_embedded)
 
         # The final code vectors are received by applying attention to the "densed" context vectors.
-        code_vectors = AttentionLayer(name='code_vectors')(context_after_dense, mask=context_valid_mask)
+        code_vectors, attention_weights = AttentionLayer(name='attention')(
+            context_after_dense, mask=context_valid_mask)
 
         # "Decode": Now we use another dense layer to get the target word embedding from each code vector.
         y_hat = Dense(self.vocabs.target_vocab.size, use_bias=False, activation='softmax', name='y_hat')(code_vectors)
@@ -112,6 +119,7 @@ class Code2VecModel(Code2VecModelBase):
         # Actual target word prediction (as string). Used as a second output layer.
         # `predict()` method just have to return the output of this layer.
         # Also used for the evaluation metrics calculations.
+        # FIXME: remove this layer. use the `topk_words` instead.
         target_word_prediction = WordPredictionLayer(
             self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION,
             self.vocabs.target_vocab.get_index_to_word_lookup_table(),
@@ -119,17 +127,34 @@ class Code2VecModel(Code2VecModelBase):
                 lambda word_indices, _: tf.not_equal(word_indices, self.vocabs.target_vocab.word_to_index[SpecialVocabWords.OOV]),
                 lambda _, word_strings: tf.strings.regex_full_match(word_strings, r'^[a-zA-Z\|]+$')
             ], name='target_word_prediction')(y_hat)
+        self._target_word_prediction_layer_output = target_word_prediction
+
+        topk_predicted_words, topk_predicted_words_scores = TopKWordPredictionsLayer(
+            self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION,
+            self.vocabs.target_vocab.get_index_to_word_lookup_table(),
+            name='topk_predictions')(y_hat)
 
         # Wrap the layers into a Keras model, using our subtoken-metrics and the CE loss.
-        keras_model = keras.Model(
-            inputs=[path_source_token_input, path_input, path_target_token_input, context_valid_mask],
-            outputs=[y_hat, code_vectors, target_word_prediction])
+        inputs = [path_source_token_input, path_input, path_target_token_input, context_valid_mask]
+        self.keras_model = keras.Model(inputs=inputs, outputs=[y_hat, topk_predicted_words])
 
-        self.keras_model = keras_model
+        # We use another dedicated Keras function to produce predictions.
+        # It have additional outputs than the original model.
+        # It is based on the trained layers of the original model and uses their weights.
+        predict_outputs = tuple(KerasPredictionModelOutput(
+            y_hat=y_hat, code_vectors=code_vectors, attention_weights=attention_weights,
+            topk_predicted_words=topk_predicted_words, topk_predicted_words_scores=topk_predicted_words_scores))
+        self.keras_model_predict_function = K.function(inputs=inputs, outputs=predict_outputs)
 
     @property
     def target_word_prediction_layer_output(self):
-        return self.keras_model.get_layer('target_word_prediction').output
+        # TODO: remove it.
+        return self._target_word_prediction_layer_output
+        # return self.keras_model.get_layer('target_word_prediction').output
+
+    @property
+    def topk_predicted_words(self):
+        return self.keras_model.get_layer('topk_predictions').output[0]
 
     def _create_metrics_for_keras_model(self) -> List[keras.metrics.Metric]:
         top_k_acc_metric = partial(
@@ -159,35 +184,35 @@ class Code2VecModel(Code2VecModelBase):
             optimizer=optimizer,
             metrics={'y_hat': self._create_metrics_for_keras_model()})
 
-    def _create_data_reader(self, estimator_mode: EstimatorMode, repeat_endlessly: bool = False):
+    def _create_data_reader(self, estimator_action: EstimatorAction, repeat_endlessly: bool = False):
         return PathContextReader(
             vocabs=self.vocabs,
             config=self.config,
-            model_input_tensors_former=_KerasModelInputTensorsFormer(estimator_mode=estimator_mode),
-            is_evaluating=(estimator_mode is EstimatorMode.Evaluate),
+            model_input_tensors_former=_KerasModelInputTensorsFormer(estimator_action=estimator_action),
+            estimator_action=estimator_action,
             repeat_endlessly=repeat_endlessly)
 
     def train(self):
         # initialize the input pipeline readers
-        train_data_input_reader = self._create_data_reader(estimator_mode=EstimatorMode.Train)
-        val_data_input_reader = self._create_data_reader(estimator_mode=EstimatorMode.Evaluate, repeat_endlessly=True)
+        train_data_input_reader = self._create_data_reader(estimator_action=EstimatorAction.Train)
+        val_data_input_reader = self._create_data_reader(estimator_action=EstimatorAction.Evaluate, repeat_endlessly=True)
 
         # TODO: do we want to use early stopping? if so, use the right chechpoint manager and set the correct
         #       `monitor` quantity (example: monitor='val_acc', mode='max')
 
         self.keras_model.fit(
-            train_data_input_reader.dataset,
+            train_data_input_reader.get_dataset(),
             steps_per_epoch=self.config.train_steps_per_epoch,
             epochs=self.config.NUM_EPOCHS,
             initial_epoch=self.nr_epochs_trained,
             batch_size=self.config.TRAIN_BATCH_SIZE,
-            validation_data=val_data_input_reader.dataset,
+            validation_data=val_data_input_reader.get_dataset(),
             validation_steps=self.config.test_steps_per_epoch,
             callbacks=[ModelCheckpointSaverCallback(self)])
 
     def evaluate(self) -> Optional[ModelEvaluationResults]:
-        val_data_input_reader = self._create_data_reader(estimator_mode=EstimatorMode.Evaluate)
-        eval_res = self.keras_model.evaluate(val_data_input_reader.dataset, steps=self.config.test_steps_per_epoch)
+        val_data_input_reader = self._create_data_reader(estimator_action=EstimatorAction.Evaluate)
+        eval_res = self.keras_model.evaluate(val_data_input_reader.get_dataset(), steps=self.config.test_steps_per_epoch)
         return ModelEvaluationResults(
             topk_acc=eval_res[2],
             subtoken_precision=eval_res[3],
@@ -196,25 +221,41 @@ class Code2VecModel(Code2VecModelBase):
             loss=eval_res[0]
         )
 
-    def predict(self, predict_data_lines):
-        # TODO: consider using `tf.data.Dataset.from_tensor_slices()` instead of placeholders.
-        predict_placeholder = tf.placeholder(tf.string)
-        predict_input_reader = self._create_data_reader(estimator_mode=EstimatorMode.Predict)
-        reader_output = predict_input_reader.process_input_from_row_placeholder(predict_placeholder)
+    def predict(self, predict_data_rows: Iterable[str]) -> List[ModelPredictionResults]:
+        predict_input_reader = self._create_data_reader(estimator_action=EstimatorAction.Predict)
+        input_iterator = predict_input_reader.process_and_iterate_input_from_data_lines(predict_data_rows,
+                                                                                        K.get_session())
+        all_model_prediction_results = []
+        for input_row in input_iterator:
+            # perform the actual prediction and get raw results.
+            input_for_predict = input_row[0][:4]  # we want only the relevant input vectors (w.o. the targets).
+            prediction_results = self.keras_model_predict_function(input_for_predict)
 
-        for predict_line in predict_data_lines:
-            print('type(predict_line)', type(predict_line))
-            print('predict_line', predict_line)
+            # make `input_row` and `prediction_results` easy to read (by accessing named fields).
+            prediction_results = KerasPredictionModelOutput(
+                *common.squeeze_single_batch_dimension_for_np_arrays(prediction_results))
+            input_row = _KerasModelInputTensorsFormer(
+                estimator_action=EstimatorAction.Predict).from_model_input_form(input_row)
+            input_row = ReaderInputTensors(*common.squeeze_single_batch_dimension_for_np_arrays(input_row))
 
-            line_after_input_processing = K.get_session().run(
-                reader_output, feed_dict={predict_placeholder: predict_line})
-            print(type(line_after_input_processing))
-            print(line_after_input_processing)
-            print([a.shape for a in line_after_input_processing])
-            prediction_results = self.keras_model.predict(line_after_input_processing)
-            print('prediction_results', prediction_results)
-            # TODO: impl the rest
-        return
+            # calculate the attention weight for each context
+            attention_per_context = self._get_attention_weight_per_context(
+                path_source_strings=input_row.path_source_token_strings,
+                path_strings=input_row.path_strings,
+                path_target_strings=input_row.path_target_token_strings,
+                attention_weights=prediction_results.attention_weights
+            )
+
+            # store the calculated prediction results in the wanted format.
+            model_prediction_results = ModelPredictionResults(
+                original_name=common.binary_to_string(input_row.target_string.item()),
+                topk_predicted_words=common.binary_to_string_list(prediction_results.topk_predicted_words),
+                topk_predicted_words_scores=prediction_results.topk_predicted_words_scores,
+                attention_per_context=attention_per_context,
+                code_vector=prediction_results.code_vectors)
+            all_model_prediction_results.append(model_prediction_results)
+
+        return all_model_prediction_results
 
     def _save_inner_model(self, path):
         if self.config.RELEASE:

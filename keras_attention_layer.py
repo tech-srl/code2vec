@@ -45,7 +45,7 @@ class AttentionLayer(Layer):
 
         attention_weights = K.softmax(attention_weights, axis=1)  # (batch, input_length, 1)
         result = K.sum(inputs * attention_weights, axis=1)  # (batch, input_length)  [multiplication uses broadcast]
-        return result
+        return result, attention_weights
 
     def compute_output_shape(self, input_shape):
         return input_shape[0], input_shape[2]  # (batch, input_dim)

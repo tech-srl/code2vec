@@ -1,10 +1,32 @@
 import tensorflow as tf
-from typing import Dict, Tuple, NamedTuple, Union, Optional
+from typing import Dict, Tuple, NamedTuple, Union, Optional, Iterable
 from config import Config
-from common import common, SpecialVocabWords
-from vocabularies import Code2VecVocabs
+from vocabularies import Code2VecVocabs, SpecialVocabWords
 import abc
 from functools import reduce
+from enum import Enum
+
+
+class EstimatorAction(Enum):
+    Train = 'train'
+    Evaluate = 'evaluate'
+    Predict = 'predict'
+
+    @property
+    def is_train(self):
+        return self is EstimatorAction.Train
+
+    @property
+    def is_evaluate(self):
+        return self is EstimatorAction.Evaluate
+
+    @property
+    def is_predict(self):
+        return self is EstimatorAction.Predict
+
+    @property
+    def is_evaluate_or_predict(self):
+        return self.is_evaluate or self.is_predict
 
 
 class ReaderInputTensors(NamedTuple):
@@ -38,12 +60,12 @@ class PathContextReader:
                  vocabs: Code2VecVocabs,
                  config: Config,
                  model_input_tensors_former: ModelInputTensorsFormer,
-                 is_evaluating: bool = False,
+                 estimator_action: EstimatorAction,
                  repeat_endlessly: bool = False):
         self.vocabs = vocabs
         self.config = config
         self.model_input_tensors_former = model_input_tensors_former
-        self.is_evaluating = is_evaluating
+        self.estimator_action = estimator_action
         self.repeat_endlessly = repeat_endlessly
         self.csv_record_defaults = [[SpecialVocabWords.OOV]] + ([[self.CONTEXT_PADDING]] * self.config.MAX_CONTEXTS)
 
@@ -70,28 +92,48 @@ class PathContextReader:
                for name, tensor in tensors._asdict().items()})
         return self.model_input_tensors_former.to_model_input_form(tensors_expanded)
 
-    @property
-    def dataset(self) -> tf.data.Dataset:
+    def process_and_iterate_input_from_data_lines(self, input_data_lines: Iterable, session: tf.Session) -> Iterable:
+        row_placeholder = tf.placeholder(tf.string)
+        reader_output = self.process_input_from_row_placeholder(row_placeholder)
+        for data_row in input_data_lines:
+            processed_row = session.run(reader_output, feed_dict={row_placeholder: data_row})
+            yield processed_row
+
+    def get_dataset(self, input_data_rows: Optional = None) -> tf.data.Dataset:
         if self._dataset is None:
-            self._dataset = self._create_dataset_pipeline()
+            self._dataset = self._create_dataset_pipeline(input_data_rows)
         return self._dataset
 
-    def _create_dataset_pipeline(self) -> tf.data.Dataset:
-        dataset = tf.data.experimental.CsvDataset(
-            self.config.data_path(is_evaluating=self.is_evaluating), record_defaults=self.csv_record_defaults,
-            field_delim=' ', use_quote_delim=False, buffer_size=self.config.CSV_BUFFER_SIZE)
+    def _create_dataset_pipeline(self, input_data_rows: Optional = None) -> tf.data.Dataset:
+        if input_data_rows is None:
+            assert not self.estimator_action.is_predict
+            dataset = tf.data.experimental.CsvDataset(
+                self.config.data_path(is_evaluating=self.estimator_action.is_evaluate),
+                record_defaults=self.csv_record_defaults, field_delim=' ', use_quote_delim=False,
+                buffer_size=self.config.CSV_BUFFER_SIZE)
+        else:
+            dataset = tf.data.Dataset.from_tensor_slices(input_data_rows)
+            dataset = dataset.map(
+                lambda input_line: tf.io.decode_csv(
+                    tf.reshape(tf.cast(input_line, tf.string), ()),
+                    record_defaults=self.csv_record_defaults,
+                    field_delim=' ', use_quote_delim=False))
 
         if self.repeat_endlessly:
             dataset = dataset.repeat()
-        else:
+        if self.estimator_action.is_train:
             if not self.repeat_endlessly and self.config.NUM_EPOCHS > 1:
                 dataset = dataset.repeat(self.config.NUM_EPOCHS)
             dataset = dataset.shuffle(self.config.SHUFFLE_BUFFER_SIZE, reshuffle_each_iteration=True)
 
         dataset = dataset.map(self._map_raw_dataset_row_to_expected_model_input_form,
                               num_parallel_calls=self.config.READER_NUM_PARALLEL_BATCHES)
-        dataset = dataset.filter(self._filter_input_rows)
-        dataset = dataset.batch(self.config.batch_size(is_evaluating=self.is_evaluating))
+        if self.estimator_action.is_predict:
+            dataset = dataset.batch(1)
+        else:
+            dataset = dataset.filter(self._filter_input_rows)
+            dataset = dataset.batch(self.config.batch_size(is_evaluating=self.estimator_action.is_evaluate))
+
         dataset = dataset.prefetch(tf.contrib.data.AUTOTUNE)
         return dataset
 
@@ -112,7 +154,7 @@ class PathContextReader:
                          self.vocabs.path_vocab.word_to_index[SpecialVocabWords.PAD])]
         any_contexts_is_valid = reduce(tf.logical_or, any_word_valid_mask_per_context_part)  # scalar
 
-        if self.is_evaluating:
+        if self.estimator_action.is_evaluate:
             cond = any_contexts_is_valid  # scalar
         else:  # training
             word_is_valid = tf.greater(
