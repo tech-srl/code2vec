@@ -5,14 +5,14 @@ class Config:
     @staticmethod
     def get_default_config(args):
         config = Config()
-        config.DL_FRAMEWORK = 'keras'
+        config.DL_FRAMEWORK = 'keras' if not args.dl_framework else args.dl_framework
         config.NUM_EPOCHS = 20
         config.SAVE_EVERY_EPOCHS = 1
         config.TRAIN_BATCH_SIZE = 512
         config.TEST_BATCH_SIZE = config.TRAIN_BATCH_SIZE
-        config.READING_BATCH_SIZE = 1300 * 4  # not used by the new reader
-        config.NUM_BATCHING_THREADS = 2  # not used by the new reader
-        config.BATCH_QUEUE_SIZE = 300000  # not used by the new reader
+        config.READING_BATCH_SIZE = 1300 * 4  # not used by the new reader; TODO: remove.
+        config.NUM_BATCHING_THREADS = 2  # not used by the new reader; TODO: remove.
+        config.BATCH_QUEUE_SIZE = 300000  # not used by the new reader; TODO: remove.
         config.MAX_CONTEXTS = 200
         config.MAX_TOKEN_VOCAB_SIZE = 1301136
         config.MAX_TARGET_VOCAB_SIZE = 261245
@@ -20,9 +20,9 @@ class Config:
         config.EMBEDDINGS_SIZE = 128
         config.TOKEN_EMBEDDINGS_SIZE = config.EMBEDDINGS_SIZE
         config.PATH_EMBEDDINGS_SIZE = config.EMBEDDINGS_SIZE
-        config.TARGET_EMBEDDINGS_SIZE = config.EMBEDDINGS_SIZE
         config.CONTEXT_EMBEDDINGS_SIZE = config.PATH_EMBEDDINGS_SIZE + 2 * config.TOKEN_EMBEDDINGS_SIZE
         config.CODE_VECTOR_SIZE = config.CONTEXT_EMBEDDINGS_SIZE
+        config.TARGET_EMBEDDINGS_SIZE = config.CODE_VECTOR_SIZE
         config.MAX_TO_KEEP = 10
         config.DROPOUT_KEEP_RATE = 0.75
         config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION = 10
@@ -46,9 +46,9 @@ class Config:
         self.SAVE_EVERY_EPOCHS: int = 0
         self.TRAIN_BATCH_SIZE: int = 0
         self.TEST_BATCH_SIZE: int = 0
-        self.READING_BATCH_SIZE: int = 0  # not used by the new reader
-        self.NUM_BATCHING_THREADS: int = 0  # not used by the new reader
-        self.BATCH_QUEUE_SIZE: int = 0  # not used by the new reader
+        self.READING_BATCH_SIZE: int = 0  # not used by the new reader; TODO: remove.
+        self.NUM_BATCHING_THREADS: int = 0  # not used by the new reader; TODO: remove.
+        self.BATCH_QUEUE_SIZE: int = 0  # not used by the new reader; TODO: remove.
         self.MAX_CONTEXTS: int = 0
         self.MAX_TOKEN_VOCAB_SIZE: int = 0
         self.MAX_TARGET_VOCAB_SIZE: int = 0
@@ -56,9 +56,9 @@ class Config:
         self.EMBEDDINGS_SIZE: int = 0
         self.TOKEN_EMBEDDINGS_SIZE: int = 0
         self.PATH_EMBEDDINGS_SIZE: int = 0
-        self.TARGET_EMBEDDINGS_SIZE: int = 0
         self.CONTEXT_EMBEDDINGS_SIZE: int = 0
         self.CODE_VECTOR_SIZE: int = 0
+        self.TARGET_EMBEDDINGS_SIZE: int = 0
         self.MAX_TO_KEEP: int = 0
         self.DROPOUT_KEEP_RATE: float = 0
         self.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION: int = 0
@@ -75,7 +75,7 @@ class Config:
         self.RELEASE: bool = False
         self.EXPORT_CODE_VECTORS: bool = False
 
-        # Automatically filled by `ModelBase._init_num_of_examples()`.
+        # Automatically filled by `Code2VecModelBase._init_num_of_examples()`.
         self.NUM_TRAIN_EXAMPLES: int = 0
         self.NUM_TEST_EXAMPLES: int = 0
 

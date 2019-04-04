@@ -15,7 +15,7 @@ from keras_attention_layer import AttentionLayer
 from keras_word_prediction_layer import WordPredictionLayer
 from keras_words_subtoken_metrics import WordsSubtokenPrecisionMetric, WordsSubtokenRecallMetric, WordsSubtokenF1Metric
 from config import Config
-from model_base import ModelBase
+from model_base import Code2VecModelBase, ModelEvaluationResults, EstimatorMode
 
 
 class ModelCheckpointSaverCallback(Callback):
@@ -34,31 +34,39 @@ class ModelCheckpointSaverCallback(Callback):
 
 
 class _KerasModelInputTensorsFormer(ModelInputTensorsFormer):
-    def __init__(self, is_evaluating: bool = False):
-        self.is_evaluating = is_evaluating
+    def __init__(self, estimator_mode: EstimatorMode):
+        self.estimator_mode = estimator_mode
 
     def to_model_input_form(self, input_tensors: ReaderInputTensors):
         inputs = (input_tensors.path_source_token_indices, input_tensors.path_indices,
                   input_tensors.path_target_token_indices, input_tensors.context_valid_mask)
+        if self.estimator_mode is EstimatorMode.Predict:
+            return inputs
         targets = {'y_hat': input_tensors.target_index}
-        if self.is_evaluating:
+        if self.estimator_mode is EstimatorMode.Evaluate:
             targets['true_target_word'] = input_tensors.target_string
         return inputs, targets
 
     def from_model_input_form(self, input_row) -> ReaderInputTensors:
-        inputs = input_row[0]
-        targets = input_row[1]
+        target_index, target_string = None, None
+        if self.estimator_mode is EstimatorMode.Predict:
+            inputs = input_row
+        else:
+            inputs = input_row[0]
+            targets = input_row[1]
+            target_index = targets['y_hat']
+            target_string = (targets['true_target_word'] if self.estimator_mode is EstimatorMode.Evaluate else None)
         return ReaderInputTensors(
             path_source_token_indices=inputs[0],
             path_indices=inputs[1],
             path_target_token_indices=inputs[2],
             context_valid_mask=inputs[3],
-            target_index=targets['y_hat'],
-            target_string=(targets['true_target_word'] if self.is_evaluating else None)
+            target_index=target_index,
+            target_string=target_string
         )
 
 
-class Code2VecModel(ModelBase):
+class Code2VecModel(Code2VecModelBase):
     def __init__(self, config: Config):
         self.keras_model: Optional[keras.Model] = None
         self.nr_epochs_trained: int = 0
@@ -151,19 +159,18 @@ class Code2VecModel(ModelBase):
             optimizer=optimizer,
             metrics={'y_hat': self._create_metrics_for_keras_model()})
 
-    def _create_data_reader(self, is_evaluating: bool = False, repeat_endlessly: bool = False):
+    def _create_data_reader(self, estimator_mode: EstimatorMode, repeat_endlessly: bool = False):
         return PathContextReader(
             vocabs=self.vocabs,
             config=self.config,
-            model_input_tensors_former=_KerasModelInputTensorsFormer(is_evaluating=is_evaluating),
-            is_evaluating=is_evaluating,
+            model_input_tensors_former=_KerasModelInputTensorsFormer(estimator_mode=estimator_mode),
+            is_evaluating=(estimator_mode is EstimatorMode.Evaluate),
             repeat_endlessly=repeat_endlessly)
 
     def train(self):
         # initialize the input pipeline readers
-        train_data_input_reader = self._create_data_reader(is_evaluating=False)
-        val_data_input_reader = self._create_data_reader(is_evaluating=True, repeat_endlessly=True)
-        self.initialize_tables()
+        train_data_input_reader = self._create_data_reader(estimator_mode=EstimatorMode.Train)
+        val_data_input_reader = self._create_data_reader(estimator_mode=EstimatorMode.Evaluate, repeat_endlessly=True)
 
         # TODO: do we want to use early stopping? if so, use the right chechpoint manager and set the correct
         #       `monitor` quantity (example: monitor='val_acc', mode='max')
@@ -178,15 +185,36 @@ class Code2VecModel(ModelBase):
             validation_steps=self.config.test_steps_per_epoch,
             callbacks=[ModelCheckpointSaverCallback(self)])
 
-    def evaluate(self):
-        val_data_input_reader = self._create_data_reader(is_evaluating=True)
-        self.initialize_tables()
-        return self.keras_model.evaluate(val_data_input_reader.dataset, steps=self.config.test_steps_per_epoch)
+    def evaluate(self) -> Optional[ModelEvaluationResults]:
+        val_data_input_reader = self._create_data_reader(estimator_mode=EstimatorMode.Evaluate)
+        eval_res = self.keras_model.evaluate(val_data_input_reader.dataset, steps=self.config.test_steps_per_epoch)
+        return ModelEvaluationResults(
+            topk_acc=eval_res[2],
+            subtoken_precision=eval_res[3],
+            subtoken_recall=eval_res[4],
+            subtoken_f1=eval_res[5],
+            loss=eval_res[0]
+        )
 
     def predict(self, predict_data_lines):
-        val_data_input_reader = self._create_data_reader(is_evaluating=True)
-        self.initialize_tables()
-        return self.keras_model.predict(val_data_input_reader.dataset, steps=self.config.test_steps_per_epoch)
+        # TODO: consider using `tf.data.Dataset.from_tensor_slices()` instead of placeholders.
+        predict_placeholder = tf.placeholder(tf.string)
+        predict_input_reader = self._create_data_reader(estimator_mode=EstimatorMode.Predict)
+        reader_output = predict_input_reader.process_input_from_row_placeholder(predict_placeholder)
+
+        for predict_line in predict_data_lines:
+            print('type(predict_line)', type(predict_line))
+            print('predict_line', predict_line)
+
+            line_after_input_processing = K.get_session().run(
+                reader_output, feed_dict={predict_placeholder: predict_line})
+            print(type(line_after_input_processing))
+            print(line_after_input_processing)
+            print([a.shape for a in line_after_input_processing])
+            prediction_results = self.keras_model.predict(line_after_input_processing)
+            print('prediction_results', prediction_results)
+            # TODO: impl the rest
+        return
 
     def _save_inner_model(self, path):
         if self.config.RELEASE:
@@ -196,13 +224,11 @@ class Code2VecModel(ModelBase):
                 self._get_save_checkpoint_manager().save(checkpoint_number=self.nr_epochs_trained)
 
     def _create_inner_model(self):
-        # K.set_session(self.sess)
         self._create_keras_model()
         self._compile_keras_model()
         self.keras_model.summary()
 
     def _load_inner_model(self):
-        # K.set_session(self.sess)
         self._create_keras_model()
         self._compile_keras_model()
 
@@ -260,6 +286,10 @@ class Code2VecModel(ModelBase):
 
         return weight
 
-    def initialize_tables(self):
+    def _initialize_tables(self):
+        PathContextReader.create_needed_vocabs_lookup_tables(self.vocabs)
         K.get_session().run(tf.tables_initializer())
         print('Initalized tables')
+
+    def _initialize(self):
+        self._initialize_tables()

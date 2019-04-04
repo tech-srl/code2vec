@@ -48,19 +48,32 @@ class PathContextReader:
         self.csv_record_defaults = [[SpecialVocabWords.OOV]] + ([[self.CONTEXT_PADDING]] * self.config.MAX_CONTEXTS)
 
         # initialize the needed lookup tables (if not already initialized).
-        self.vocabs.token_vocab.get_word_to_index_lookup_table()
-        self.vocabs.path_vocab.get_word_to_index_lookup_table()
-        self.vocabs.target_vocab.get_word_to_index_lookup_table()
+        self.create_needed_vocabs_lookup_tables(self.vocabs)
 
-        self._dataset = self._create_dataset_pipeline()
+        self._dataset: Optional[tf.data.Dataset] = None
 
-    def process_from_placeholder(self, row):
-        parts = tf.io.decode_csv(row, record_defaults=self.csv_record_defaults, field_delim=' ', use_quote_delim=False)
+    @classmethod
+    def create_needed_vocabs_lookup_tables(cls, vocabs: Code2VecVocabs):
+        vocabs.token_vocab.get_word_to_index_lookup_table()
+        vocabs.path_vocab.get_word_to_index_lookup_table()
+        vocabs.target_vocab.get_word_to_index_lookup_table()
+
+    def process_input_from_row_placeholder(self, row_placeholder):
+        parts = tf.io.decode_csv(
+            row_placeholder, record_defaults=self.csv_record_defaults, field_delim=' ', use_quote_delim=False)
         # TODO: apply the filter `_filter_input_rows()` here.
-        return self._map_raw_dataset_row_to_expected_model_input_form(*parts)
+        tensors = self._map_raw_dataset_row_to_input_tensors(*parts)
+
+        # make it batched (first batch axis is going to have dimension 1)
+        tensors_expanded = ReaderInputTensors(
+            **{name: None if tensor is None else tf.expand_dims(tensor, axis=0)
+               for name, tensor in tensors._asdict().items()})
+        return self.model_input_tensors_former.to_model_input_form(tensors_expanded)
 
     @property
-    def dataset(self):
+    def dataset(self) -> tf.data.Dataset:
+        if self._dataset is None:
+            self._dataset = self._create_dataset_pipeline()
         return self._dataset
 
     def _create_dataset_pipeline(self) -> tf.data.Dataset:
@@ -110,6 +123,10 @@ class PathContextReader:
 
     def _map_raw_dataset_row_to_expected_model_input_form(self, *row_parts) -> \
             Tuple[Union[tf.Tensor, Tuple[tf.Tensor, ...], Dict[str, tf.Tensor]], ...]:
+        tensors = self._map_raw_dataset_row_to_input_tensors(*row_parts)
+        return self.model_input_tensors_former.to_model_input_form(tensors)
+
+    def _map_raw_dataset_row_to_input_tensors(self, *row_parts) -> ReaderInputTensors:
         row_parts = list(row_parts)
         target_str = row_parts[0]
         target_index = self.vocabs.target_vocab.lookup_index(target_str)
@@ -144,7 +161,7 @@ class PathContextReader:
         assert all(tensor.shape == (self.config.MAX_CONTEXTS,) for tensor in
                    {path_source_token_indices, path_indices, path_target_token_indices, context_valid_mask})
 
-        tensors = ReaderInputTensors(
+        return ReaderInputTensors(
             path_source_token_indices=path_source_token_indices,
             path_indices=path_indices,
             path_target_token_indices=path_target_token_indices,
@@ -155,5 +172,3 @@ class PathContextReader:
             path_strings=path_strings,
             path_target_token_strings=path_target_token_strings
         )
-
-        return self.model_input_tensors_former.to_model_input_form(tensors)

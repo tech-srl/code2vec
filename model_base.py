@@ -1,13 +1,47 @@
 import numpy as np
 import abc
 import os
+from typing import NamedTuple, Optional, List, Dict, Tuple
+from enum import Enum
 
 from common import common
 from vocabularies import Code2VecVocabs, VocabType
 from config import Config
 
 
-class ModelBase(abc.ABC):
+class ModelEvaluationResults(NamedTuple):
+    topk_acc: float
+    subtoken_precision: float
+    subtoken_recall: float
+    subtoken_f1: float
+    loss: Optional[float] = None
+
+    def __str__(self):
+        res_str = 'topk_acc: {topk_acc}, precision: {precision}, recall: {recall}, F1: {f1}'.format(
+            topk_acc=self.topk_acc,
+            precision=self.subtoken_precision,
+            recall=self.subtoken_recall,
+            f1=self.subtoken_f1)
+        if self.loss is not None:
+            res_str = ('loss: {}, '.format(self.loss)) + res_str
+        return res_str
+
+
+class ModelPredictionResults(NamedTuple):
+    original_name: str
+    topk_predicted_words: np.ndarray
+    topk_scores: np.ndarray
+    attention_per_context: Dict[Tuple[str, str, str], float]
+    code_vector: Optional[np.ndarray] = None
+
+
+class EstimatorMode(Enum):
+    Train = 'train'
+    Evaluate = 'evaluate'
+    Predict = 'predict'
+
+
+class Code2VecModelBase(abc.ABC):
     def __init__(self, config: Config):
         self.config = config
 
@@ -18,6 +52,7 @@ class ModelBase(abc.ABC):
         self.vocabs = Code2VecVocabs.load_or_create(config)
         self.vocabs.target_vocab.get_index_to_word_lookup_table()  # just to initialize it (if not already initialized)
         self._load_or_create_inner_model()
+        self._initialize()
 
     def _init_num_of_examples(self):
         print('Checking number of examples ... ', end='')
@@ -34,7 +69,7 @@ class ModelBase(abc.ABC):
             with open(dataset_num_examples_file_path, 'r') as file:
                 num_examples_in_dataset = int(file.readline())
         else:
-            num_examples_in_dataset = common.rawincount(dataset_path)
+            num_examples_in_dataset = common.count_lines_in_file(dataset_path)
             with open(dataset_num_examples_file_path, 'w') as file:
                 file.write(str(num_examples_in_dataset))
         return num_examples_in_dataset
@@ -53,13 +88,19 @@ class ModelBase(abc.ABC):
         for vec in code_vectors:
             file.write(' '.join(map(str, vec)) + '\n')
 
-    def get_attention_per_path(self, source_strings, path_strings, target_strings, attention_weights):
-        attention_weights = np.squeeze(attention_weights)  # (max_contexts, )
-        attention_per_context = {}
-        for source, path, target, weight in zip(source_strings, path_strings, target_strings, attention_weights):
-            string_triplet = (
-                common.binary_to_string(source), common.binary_to_string(path), common.binary_to_string(target))
-            attention_per_context[string_triplet] = weight
+    def _get_attention_per_context(self, path_source_strings, path_strings, path_target_strings, attention_weights) -> \
+            Dict[Tuple[str, str, str], float]:
+        attention_weights = np.squeeze(attention_weights, axis=-1)  # (max_contexts, )
+        attention_per_context: Dict[Tuple[str, str, str], float] = {}
+        # shape of path_source_strings, path_strings, path_target_strings, attention_weights is (max_contexts, )
+
+        # iterate over contexts
+        for path_source, path, path_target, weight in \
+                zip(path_source_strings, path_strings, path_target_strings, attention_weights):
+            string_context_triplet = (common.binary_to_string(path_source),
+                                      common.binary_to_string(path),
+                                      common.binary_to_string(path_target))
+            attention_per_context[string_context_triplet] = weight
         return attention_per_context
 
     def close_session(self):
@@ -72,11 +113,11 @@ class ModelBase(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def evaluate(self):
+    def evaluate(self) -> Optional[ModelEvaluationResults]:
         ...
 
     @abc.abstractmethod
-    def predict(self, predict_data_lines):
+    def predict(self, predict_data_lines) -> List[ModelPredictionResults]:
         ...
 
     @abc.abstractmethod
@@ -94,6 +135,11 @@ class ModelBase(abc.ABC):
         ...
 
     def _create_inner_model(self):
+        # can be overridden by the implementation model class.
+        # default implementation just does nothing.
+        pass
+
+    def _initialize(self):
         # can be overridden by the implementation model class.
         # default implementation just does nothing.
         pass

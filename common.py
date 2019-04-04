@@ -2,6 +2,8 @@ import re
 import numpy as np
 import tensorflow as tf
 from itertools import takewhile, repeat
+from typing import List
+
 from vocabularies import SpecialVocabWords
 
 
@@ -119,7 +121,7 @@ class common:
 
     @staticmethod
     def legal_method_names_checker(name):
-        return name != SpecialVocabWords.OOV and re.match('^[a-zA-Z\|]+$', name)
+        return name != SpecialVocabWords.OOV and re.match(r'^[a-zA-Z|]+$', name)
 
     @staticmethod
     def filter_impossible_names(top_words):
@@ -131,19 +133,22 @@ class common:
         return str.split('|')
 
     @staticmethod
-    def parse_results(result, unhash_dict, topk=5):
+    def parse_prediction_results(raw_prediction_results, unhash_dict, topk: int = 5) -> List['MethodPredictionResults']:
         prediction_results = []
-        for single_method in result:
-            original_name, top_suggestions, top_scores, attention_per_context = list(single_method)
-            current_method_prediction_results = PredictionResults(original_name)
-            for i, predicted in enumerate(top_suggestions):
+        for single_method_prediction in raw_prediction_results:
+            current_method_prediction_results = MethodPredictionResults(single_method_prediction.original_name)
+            for i, predicted in enumerate(single_method_prediction.topk_predicted_words):
                 if predicted == SpecialVocabWords.OOV:
                     continue
                 suggestion_subtokens = common.get_subtokens(predicted)
-                current_method_prediction_results.append_prediction(suggestion_subtokens, top_scores[i].item())
-            for context, attention in [(key, attention_per_context[key]) for key in
-                                       sorted(attention_per_context, key=attention_per_context.get, reverse=True)][
-                                      :topk]:
+                current_method_prediction_results.append_prediction(
+                    suggestion_subtokens, single_method_prediction.topk_scores[i].item())
+            topk_attention_per_context = [
+                (key, single_method_prediction.attention_per_context[key])
+                for key in sorted(single_method_prediction.attention_per_context,
+                                  key=single_method_prediction.attention_per_context.get, reverse=True)
+            ][:topk]
+            for context, attention in topk_attention_per_context:
                 token1, hashed_path, token2 = context
                 if hashed_path in unhash_dict:
                     unhashed_path = unhash_dict[hashed_path]
@@ -159,13 +164,13 @@ class common:
         return tf.logical_and(tf.equal(cumsum, 1), bool_tensor)
 
     @staticmethod
-    def rawincount(filename):
-        with open(filename, 'rb') as f:
+    def count_lines_in_file(file_path: str):
+        with open(file_path, 'rb') as f:
             bufgen = takewhile(lambda x: x, (f.raw.read(1024 * 1024) for _ in repeat(None)))
             return sum(buf.count(b'\n') for buf in bufgen)
 
 
-class PredictionResults:
+class MethodPredictionResults:
     def __init__(self, original_name):
         self.original_name = original_name
         self.predictions = list()

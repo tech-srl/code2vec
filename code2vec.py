@@ -2,11 +2,11 @@ from vocabularies import VocabType
 from config import Config
 from argparse import ArgumentParser
 from interactive_predict import InteractivePredictor
-from model_base import ModelBase
+from model_base import Code2VecModelBase
 import sys
 
 
-def load_model_dynamically(config: Config) -> ModelBase:
+def load_model_dynamically(config: Config) -> Code2VecModelBase:
     if config.DL_FRAMEWORK == 'tensorflow':
         from tensorflow_model import Code2VecModel
     elif config.DL_FRAMEWORK == 'keras':
@@ -42,6 +42,8 @@ if __name__ == '__main__':
                         help='if specified and loading a trained model, release the loaded model for a lower model '
                              'size.')
     parser.add_argument('--predict', action='store_true')
+    parser.add_argument("-fw", "--framework", dest="dl_framework", choices=['keras', 'tensorflow'], default='keras',
+                        help="deep learning framework to use.")
     args = parser.parse_args()
 
     config = Config.get_default_config(args)
@@ -51,17 +53,15 @@ if __name__ == '__main__':
     if config.TRAIN_DATA_PATH_PREFIX:
         model.train()
     if args.save_w2v is not None:
-        model.save_word2vec_format(args.save_w2v, source=VocabType.Token)
+        model.save_word2vec_format(args.save_w2v, VocabType.Token)
         print('Origin word vectors saved in word2vec text format in: %s' % args.save_w2v)
     if args.save_t2v is not None:
-        model.save_word2vec_format(args.save_t2v, source=VocabType.Target)
+        model.save_word2vec_format(args.save_t2v, VocabType.Target)
         print('Target word vectors saved in word2vec text format in: %s' % args.save_t2v)
     if config.TEST_DATA_PATH and not args.data_path:
         eval_results = model.evaluate()
         if eval_results is not None:
-            results, precision, recall, f1 = eval_results
-            print(results)
-            print('Precision: ' + str(precision) + ', recall: ' + str(recall) + ', F1: ' + str(f1))
+            print(str(eval_results).replace('topk', 'top{}'.format(config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION)))
     if args.predict:
         predictor = InteractivePredictor(config, model)
         predictor.predict()
