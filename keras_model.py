@@ -9,11 +9,10 @@ from path_context_reader import PathContextReader, ModelInputTensorsFormer, Read
 import os
 import numpy as np
 from functools import partial
-from typing import List, Optional, Iterable
+from typing import List, Optional, Iterable, Union, Callable
 from collections import namedtuple
 from vocabularies import SpecialVocabWords, VocabType
 from keras_attention_layer import AttentionLayer
-from keras_word_prediction_layer import WordPredictionLayer
 from keras_topk_word_predictions_layer import TopKWordPredictionsLayer
 from keras_words_subtoken_metrics import WordsSubtokenPrecisionMetric, WordsSubtokenRecallMetric, WordsSubtokenF1Metric
 from config import Config
@@ -88,8 +87,6 @@ class Code2VecModel(Code2VecModelBase):
         path_target_token_input = Input((self.config.MAX_CONTEXTS,), dtype=tf.int32)
         context_valid_mask = Input((self.config.MAX_CONTEXTS,))
 
-        # TODO: consider set embedding initializer or leave it default? [for 2 embeddings below and last dense layer]
-
         # Input paths are indexes, we embed these here.
         paths_embedded = Embedding(
             self.vocabs.path_vocab.size, self.config.PATH_EMBEDDINGS_SIZE, name='path_embedding')(path_input)
@@ -116,19 +113,8 @@ class Code2VecModel(Code2VecModelBase):
         # "Decode": Now we use another dense layer to get the target word embedding from each code vector.
         y_hat = Dense(self.vocabs.target_vocab.size, use_bias=False, activation='softmax', name='y_hat')(code_vectors)
 
-        # Actual target word prediction (as string). Used as a second output layer.
-        # `predict()` method just have to return the output of this layer.
-        # Also used for the evaluation metrics calculations.
-        # FIXME: remove this layer. use the `topk_words` instead.
-        target_word_prediction = WordPredictionLayer(
-            self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION,
-            self.vocabs.target_vocab.get_index_to_word_lookup_table(),
-            predicted_words_filters=[
-                lambda word_indices, _: tf.not_equal(word_indices, self.vocabs.target_vocab.word_to_index[SpecialVocabWords.OOV]),
-                lambda _, word_strings: tf.strings.regex_full_match(word_strings, r'^[a-zA-Z\|]+$')
-            ], name='target_word_prediction')(y_hat)
-        self._target_word_prediction_layer_output = target_word_prediction
-
+        # Actual target word predictions (as strings). Used as a second output layer.
+        # Used for predict() and for the evaluation metrics calculations.
         topk_predicted_words, topk_predicted_words_scores = TopKWordPredictionsLayer(
             self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION,
             self.vocabs.target_vocab.get_index_to_word_lookup_table(),
@@ -147,29 +133,30 @@ class Code2VecModel(Code2VecModelBase):
         self.keras_model_predict_function = K.function(inputs=inputs, outputs=predict_outputs)
 
     @property
-    def target_word_prediction_layer_output(self):
-        # TODO: remove it.
-        return self._target_word_prediction_layer_output
-        # return self.keras_model.get_layer('target_word_prediction').output
-
-    @property
     def topk_predicted_words(self):
         return self.keras_model.get_layer('topk_predictions').output[0]
 
-    def _create_metrics_for_keras_model(self) -> List[keras.metrics.Metric]:
-        top_k_acc_metric = partial(
-            sparse_top_k_categorical_accuracy, k=self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION)
-        top_k_acc_metric.__name__ = 'top{k}_acc'.format(k=self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION)
+    def _create_metrics_for_keras_model(self) -> List[Union[Callable, keras.metrics.Metric]]:
+        top_k_acc_metrics = []
+        for k in range(1, self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION + 1):
+            top_k_acc_metric = partial(
+                sparse_top_k_categorical_accuracy, k=k)
+            top_k_acc_metric.__name__ = 'top{k}_acc'.format(k=k)
+            top_k_acc_metrics.append(top_k_acc_metric)
         words_subtoken_metrics_kwargs = {
             'index_to_word_table': self.vocabs.target_vocab.get_index_to_word_lookup_table(),
-            'predicted_word_output': self.target_word_prediction_layer_output
+            'topk_predicted_words': self.topk_predicted_words,
+            'predicted_words_filters': [
+                lambda word_strings: tf.not_equal(word_strings, SpecialVocabWords.OOV),
+                lambda word_strings: tf.strings.regex_full_match(word_strings, r'^[a-zA-Z\|]+$')
+            ]
         }
-        metrics = [
-            top_k_acc_metric,
+        words_subtokens_metrics = [
             WordsSubtokenPrecisionMetric(**words_subtoken_metrics_kwargs, name='subtoken_precision'),
             WordsSubtokenRecallMetric(**words_subtoken_metrics_kwargs, name='subtoken_recall'),
             WordsSubtokenF1Metric(**words_subtoken_metrics_kwargs, name='subtoken_f1')
         ]
+        metrics = top_k_acc_metrics + words_subtokens_metrics
         return metrics
 
     @classmethod
@@ -178,7 +165,9 @@ class Code2VecModel(Code2VecModelBase):
 
     def _compile_keras_model(self, optimizer=None):
         if optimizer is None:
-            optimizer = self._create_optimizer()
+            optimizer = self.keras_model.optimizer
+            if optimizer is None:
+                optimizer = self._create_optimizer()
         self.keras_model.compile(
             loss={'y_hat': 'sparse_categorical_crossentropy'},
             optimizer=optimizer,
@@ -212,12 +201,16 @@ class Code2VecModel(Code2VecModelBase):
 
     def evaluate(self) -> Optional[ModelEvaluationResults]:
         val_data_input_reader = self._create_data_reader(estimator_action=EstimatorAction.Evaluate)
-        eval_res = self.keras_model.evaluate(val_data_input_reader.get_dataset(), steps=self.config.test_steps_per_epoch)
+        eval_res = self.keras_model.evaluate(
+            val_data_input_reader.get_dataset(),
+            batch_size=self.config.TEST_BATCH_SIZE,
+            steps=self.config.test_steps_per_epoch)
+        k = self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION
         return ModelEvaluationResults(
-            topk_acc=eval_res[2],
-            subtoken_precision=eval_res[3],
-            subtoken_recall=eval_res[4],
-            subtoken_f1=eval_res[5],
+            topk_acc=eval_res[2:k+2],
+            subtoken_precision=eval_res[k+2],
+            subtoken_recall=eval_res[k+3],
+            subtoken_f1=eval_res[k+4],
             loss=eval_res[0]
         )
 
