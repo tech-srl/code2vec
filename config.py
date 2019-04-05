@@ -5,7 +5,7 @@ class Config:
     @staticmethod
     def get_default_config(args):
         config = Config()
-        config.DL_FRAMEWORK = 'keras' if not args.dl_framework else args.dl_framework
+        config.DL_FRAMEWORK = 'tensorflow' if not args.dl_framework else args.dl_framework
         config.NUM_EPOCHS = 20
         config.SAVE_EVERY_EPOCHS = 1
         config.TRAIN_BATCH_SIZE = 512

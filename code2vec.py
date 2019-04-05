@@ -25,13 +25,13 @@ if __name__ == '__main__':
 
     is_training = '--train' in sys.argv or '-tr' in sys.argv
     parser.add_argument("-s", "--save", dest="save_path",
-                        help="path to save file", metavar="FILE", required=False)
+                        help="path to save the model file", metavar="FILE", required=False)
     parser.add_argument("-w2v", "--save_word2v", dest="save_w2v",
-                        help="path to save file", metavar="FILE", required=False)
+                        help="path to save the tokens embeddings file", metavar="FILE", required=False)
     parser.add_argument("-t2v", "--save_target2v", dest="save_t2v",
-                        help="path to save file", metavar="FILE", required=False)
+                        help="path to save the targets embeddings file", metavar="FILE", required=False)
     parser.add_argument("-l", "--load", dest="load_path",
-                        help="path to save file", metavar="FILE", required=False)
+                        help="path to load the model from", metavar="FILE", required=False)
     parser.add_argument('--save_w2v', dest='save_w2v', required=False,
                         help="save word (token) vectors in word2vec format")
     parser.add_argument('--save_t2v', dest='save_t2v', required=False,
@@ -41,9 +41,10 @@ if __name__ == '__main__':
     parser.add_argument('--release', action='store_true',
                         help='if specified and loading a trained model, release the loaded model for a lower model '
                              'size.')
-    parser.add_argument('--predict', action='store_true')
-    parser.add_argument("-fw", "--framework", dest="dl_framework", choices=['keras', 'tensorflow'], default='keras',
-                        help="deep learning framework to use.")
+    parser.add_argument('--predict', action='store_true',
+                        help='execute the interactive prediction shell')
+    parser.add_argument("-fw", "--framework", dest="dl_framework", choices=['keras', 'tensorflow'],
+                        default='tensorflow', help="deep learning framework to use.")
     args = parser.parse_args()
 
     config = Config.get_default_config(args)
