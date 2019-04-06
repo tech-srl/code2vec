@@ -506,8 +506,7 @@ class TopKAccuracyEvaluationMetric:
                 common.normalize_word(predicted_word) for predicted_word in common.filter_impossible_names(top_words)])
             for suggestion_idx, normalized_possible_suggestion in enumerate(normalized_possible_suggestions):
                 if normalized_original_name == normalized_possible_suggestion:
-                    for j in range(suggestion_idx, self.top_k):
-                        self.nr_correct_predictions[j] += 1
+                    self.nr_correct_predictions[suggestion_idx:self.top_k] += 1
                     break
 
     @property
