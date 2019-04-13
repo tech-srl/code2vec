@@ -7,6 +7,8 @@ This is an official implementation of the model described in:
 
 _**October 2018** - the paper was accepted to [POPL'2019](https://popl19.sigplan.org)_!
 
+_**April 2019** - The talk video is available [here](https://www.youtube.com/watch?v=EJ8okcxL2Iw&t=469s)_.
+
 An **online demo** is available at [https://code2vec.org/](https://code2vec.org/).
 
 This is a TensorFlow implementation, designed to be easy and useful in research, 
