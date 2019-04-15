@@ -2,7 +2,7 @@ import re
 import numpy as np
 import tensorflow as tf
 from itertools import takewhile, repeat
-from typing import List
+from typing import List, Optional, Tuple
 
 from vocabularies import SpecialVocabWords
 
@@ -176,6 +176,15 @@ class common:
             None if array is None else np.squeeze(array, axis=0)
             for array in arrays
         )
+
+    @staticmethod
+    def get_first_match_word_from_top_predictions(original_name, top_predicted_words) -> Optional[Tuple[int, str]]:
+        normalized_original_name = common.normalize_word(original_name)
+        for suggestion_idx, predicted_word in enumerate(common.filter_impossible_names(top_predicted_words)):
+            normalized_possible_suggestion = common.normalize_word(predicted_word)
+            if normalized_original_name == normalized_possible_suggestion:
+                return suggestion_idx, predicted_word
+        return None
 
 
 class MethodPredictionResults:

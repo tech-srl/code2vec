@@ -76,8 +76,7 @@ class Code2VecModel(Code2VecModelBase):
         batch_num = 0
         sum_loss = 0
         multi_batch_start_time = time.time()
-        num_batches_to_evaluate = max(int(
-            self.config.NUM_TRAIN_EXAMPLES / self.config.TRAIN_BATCH_SIZE * self.config.SAVE_EVERY_EPOCHS), 1)
+        num_batches_to_evaluate = max(int(self.config.train_steps_per_epoch * self.config.SAVE_EVERY_EPOCHS), 1)
 
         train_reader = PathContextReader(vocabs=self.vocabs,
                                          model_input_tensors_former=_TFTrainModelInputTensorsFormer(),
@@ -115,9 +114,9 @@ class Code2VecModel(Code2VecModelBase):
                     multi_batch_start_time = time.time()
                 if batch_num % num_batches_to_evaluate == 0:
                     epoch_num = int((batch_num / num_batches_to_evaluate) * self.config.SAVE_EVERY_EPOCHS)
-                    save_target = self.config.MODEL_SAVE_PATH + '_iter' + str(epoch_num)
-                    self._save_inner_model(save_target)
-                    print('Saved after %d epochs in: %s' % (epoch_num, save_target))
+                    save_path = self.config.MODEL_SAVE_PATH + '_iter' + str(epoch_num)
+                    self._save_inner_model(save_path)
+                    print('Saved after %d epochs in: %s' % (epoch_num, save_path))
                     evaluation_results = self.evaluate()
                     evaluation_results_str = (str(evaluation_results).replace('topk', 'top{}'.format(
                         self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION)))
@@ -160,7 +159,7 @@ class Code2VecModel(Code2VecModelBase):
                 self.saver.save(self.sess, release_name)
                 return None  # FIXME: why do we return none here?
 
-        with open('log.txt', 'w') as output_file:
+        with open('log.txt', 'w') as log_output_file:
             if self.config.EXPORT_CODE_VECTORS:
                 code_vectors_file = open(self.config.TEST_DATA_PATH + '.vectors', 'w')
             total_predictions = 0
@@ -188,7 +187,7 @@ class Code2VecModel(Code2VecModelBase):
                     top_words = common.binary_to_string_matrix(top_words)  # (batch, top_k)
                     original_names = common.binary_to_string_list(original_names)  # (batch,)
 
-                    self._log_predictions_during_evaluation(zip(original_names, top_words), output_file)
+                    self._log_predictions_during_evaluation(zip(original_names, top_words), log_output_file)
                     topk_accuracy_evaluation_metric.update(zip(original_names, top_words))
                     subtokens_evaluation_metric.update(zip(original_names, top_words))
 
@@ -203,7 +202,7 @@ class Code2VecModel(Code2VecModelBase):
             except tf.errors.OutOfRangeError:
                 pass  # reader iterator is exhausted and have no more batches to produce.
             print('Done testing, epoch reached')
-            output_file.write(str(topk_accuracy_evaluation_metric.topk_correct_predictions) + '\n')
+            log_output_file.write(str(topk_accuracy_evaluation_metric.topk_correct_predictions) + '\n')
         if self.config.EXPORT_CODE_VECTORS:
             code_vectors_file.close()
         
@@ -411,18 +410,15 @@ class Code2VecModel(Code2VecModelBase):
             return None
 
     def _log_predictions_during_evaluation(self, results, output_file):
-        for original_name, top_words in results:
-            normalized_original_name = common.normalize_word(original_name)
-            predicted_something = False
-            for i, predicted_word in enumerate(common.filter_impossible_names(top_words)):
-                if i == 0:
+        for original_name, top_predicted_words in results:
+            found_match = common.get_first_match_word_from_top_predictions(original_name, top_predicted_words)
+            if found_match is not None:
+                prediction_idx, predicted_word = found_match
+                if prediction_idx == 0:
                     output_file.write('Original: ' + original_name + ', predicted 1st: ' + predicted_word + '\n')
-                predicted_something = True
-                normalized_suggestion = common.normalize_word(predicted_word)
-                if normalized_original_name == normalized_suggestion:
-                    output_file.write('\t\t predicted correctly at rank: ' + str(i + 1) + '\n')
-                    break
-            if not predicted_something:
+                else:
+                    output_file.write('\t\t predicted correctly at rank: ' + str(prediction_idx + 1) + '\n')
+            else:
                 output_file.write('No results for predicting: ' + original_name)
 
     def _trace_training(self, sum_loss, batch_num, multi_batch_start_time):
@@ -499,15 +495,12 @@ class TopKAccuracyEvaluationMetric:
         self.nr_predictions: int = 0
 
     def update(self, results):
-        for original_name, top_words in results:
+        for original_name, top_predicted_words in results:
             self.nr_predictions += 1
-            normalized_original_name = common.normalize_word(original_name)
-            normalized_possible_suggestions = np.array([
-                common.normalize_word(predicted_word) for predicted_word in common.filter_impossible_names(top_words)])
-            for suggestion_idx, normalized_possible_suggestion in enumerate(normalized_possible_suggestions):
-                if normalized_original_name == normalized_possible_suggestion:
-                    self.nr_correct_predictions[suggestion_idx:self.top_k] += 1
-                    break
+            found_match = common.get_first_match_word_from_top_predictions(original_name, top_predicted_words)
+            if found_match is not None:
+                suggestion_idx, _ = found_match
+                self.nr_correct_predictions[suggestion_idx:self.top_k] += 1
 
     @property
     def topk_correct_predictions(self):
