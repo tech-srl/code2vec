@@ -174,8 +174,11 @@ This will save a copy of the trained model with the '.release' suffix.
 A "released" model usually takes 3x less disk space.
 
 ### Exporting the trained token vectors and target vectors
-Token and target embeddings are available to download [here](http://urialon.cswp.cs.technion.ac.il/publications/).
-The saved embeddings there are saved without subtoken-delimiters ("*toLower*" is saved as "*tolower*").
+Token and target embeddings are available to download: 
+
+[[Token vectors]](https://s3.amazonaws.com/code2vec/model/token_vecs.tar.gz) [[Method name vectors]](https://s3.amazonaws.com/code2vec/model/target_vecs.tar.gz)
+
+These saved embeddings are saved without subtoken-delimiters ("*toLower*" is saved as "*tolower*").
 
 In order to export embeddings from a trained model, use the "--save_w2v" and "--save_t2v" flags:
 
