@@ -187,6 +187,16 @@ Dropout rate used during training.
 ## Features
 Code2vec supports the following features: 
 
+### Choosing implementation to use
+This repo comes with two model implementations:
+(i) uses pure TensorFlow (written in [tensorflow_model.py](tensorflow_model.py));
+(ii) uses TensorFlow's Keras (written in [keras_model.py](keras_model.py)).
+The default implementation used by `code2vec.py` is the pure TensorFlow.
+To explicitly choose the desired implementation to use, specify `--framework tensorflow` or `--framework keras`
+as an additional argument when executing the script `code2vec.py`.
+Particularly, this argument can be added to each one of the usage examples (of `code2vec.py`) detailed in this file.
+Note that in order to load a trained model (from file), one should use the same implementation used during its training.
+
 ### Releasing the model
 If you wish to keep a trained model for inference only (without the ability to continue training it) you can
 release the model using:
