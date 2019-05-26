@@ -16,9 +16,10 @@ and for experimenting with new ideas in machine learning for code tasks.
 By default, it learns Java source code and predicts Java method names, but it can be easily extended to other languages, 
 since the TensorFlow network is agnostic to the input programming language (see [Extending to other languages](#extending-to-other-languages).
 Contributions are welcome.
+This repo actually contains two model implementations. The 1st uses pure TensorFlow and the 2nd uses TensorFlow's Keras. 
 
-The [master](tree/master) branch contains further work that may be not fully compatible with the paper version.
-For the original paper version visit the [paper-version](tree/paper-version) branch.
+The [master](/tech-srl/code2vec/tree/master) branch contains further work that may be not fully compatible with the paper version.
+For the original paper version visit the [paper-version](/tech-srl/code2vec/tree/paper-version) branch.
 
 <center style="padding: 40px"><img width="70%" src="https://github.com/tech-srl/code2vec/raw/master/images/network.png" /></center>
 
