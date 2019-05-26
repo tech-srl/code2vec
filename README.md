@@ -15,6 +15,9 @@ By default, it learns Java source code and predicts Java method names, but it ca
 since the TensorFlow network is agnostic to the input programming language (see [Extending to other languages](#extending-to-other-languages).
 Contributions are welcome.
 
+The [master](tree/master) branch contains further work that may be not fully compatible with the paper version.
+For the original paper version visit the [paper-version](tree/paper-version) branch.
+
 <center style="padding: 40px"><img width="70%" src="https://github.com/tech-srl/code2vec/raw/master/images/network.png" /></center>
 
 Table of Contents
@@ -31,13 +34,18 @@ Table of Contents
 On Ubuntu:
   * [Python3](https://www.linuxbabe.com/ubuntu/install-python-3-6-ubuntu-16-04-16-10-17-04). To check if you have it:
 > python3 --version
-  * TensorFlow - version 1.5 or newer ([install](https://www.tensorflow.org/install/install_linux)). To check TensorFlow version:
+  * TensorFlow - version 1.13.1 or newer ([install](https://www.tensorflow.org/install/install_linux)).
+  To check TensorFlow version:
 > python3 -c 'import tensorflow as tf; print(tf.\_\_version\_\_)'
-  * If you are using a GPU, you will need CUDA 9.0 ([download](https://developer.nvidia.com/cuda-90-download-archive)) 
+  * If you are using a GPU, you will need CUDA 10.0
+  ([download](https://developer.nvidia.com/cuda-10.0-download-archive-base)) 
   as this is the version that is currently supported by TensorFlow. To check CUDA version:
 > nvcc --version
-  * For GPU: cuDNN (>=7.0) ([download](http://developer.nvidia.com/cudnn))
-  * For [creating a new dataset](#creating-and-preprocessing-a-new-java-dataset) or [manually examining a trained model](#step-4-manual-examination-of-a-trained-model) (any operation that requires parsing of a new code example) - [Java JDK](https://openjdk.java.net/install/)
+  * For GPU: cuDNN (>=7.5) ([download](http://developer.nvidia.com/cudnn)) To check cuDNN version:
+> cat /usr/include/cudnn.h | grep CUDNN_MAJOR -A 2
+  * For [creating a new dataset](#creating-and-preprocessing-a-new-java-dataset)
+  or [manually examining a trained model](#step-4-manual-examination-of-a-trained-model)
+  (any operation that requires parsing of a new code example) - [Java JDK](https://openjdk.java.net/install/)
 
 ## Quickstart
 ### Step 0: Cloning this repository
@@ -130,34 +138,48 @@ Changing hyper-parameters is possible by editing the file
 [common.py](common.py).
 
 Here are some of the parameters and their description:
-#### config.NUM_EPOCHS = 20
+#### config.NUM_TRAIN_EPOCHS = 20
 The max number of epochs to train the model. Stopping earlier must be done manually (kill).
 #### config.SAVE_EVERY_EPOCHS = 1
 After how many training iterations a model should be saved.
-#### config.BATCH_SIZE = 1024 
+#### config.TRAIN_BATCH_SIZE = 1024 
 Batch size in training.
-#### config.TEST_BATCH_SIZE = config.BATCH_SIZE
+#### config.TEST_BATCH_SIZE = config.TRAIN_BATCH_SIZE
 Batch size in evaluating. Affects only the evaluation speed and memory consumption, does not affect the results.
-#### config.READING_BATCH_SIZE = 1300 * 4
-The batch size of reading text lines to the queue that feeds examples to the network during training.
-#### config.NUM_BATCHING_THREADS = 2
-The number of threads enqueuing examples.
-#### config.BATCH_QUEUE_SIZE = 300000
-Max number of elements in the feeding queue.
-#### config.DATA_NUM_CONTEXTS = 200
-The number of contexts in a single example, as was created in preprocessing.
+#### config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION = 10
+Number of words with highest scores in $ y_hat $ to consider during prediction and evaluation.
+#### config.NUM_BATCHES_TO_LOG = 100
+Number of batches to complete between two logging records.
+#### config.READER_NUM_PARALLEL_BATCHES = 4
+The number of threads enqueuing examples to the reader queue.
+#### config.SHUFFLE_BUFFER_SIZE = 10000
+Size of buffer in reader to shuffle example within during training.
+Bigger buffer allows better randomness, but requires more amount of memory and may harm training throughput.
+#### config.CSV_BUFFER_SIZE = 100 * 1024 * 1024  # 100 MB
+The buffer size (in bytes) of the CSV dataset reader.
+
 #### config.MAX_CONTEXTS = 200
 The number of contexts to use in each example.
-#### config.WORDS_VOCAB_SIZE = 1301136
+#### config.MAX_TOKEN_VOCAB_SIZE = 1301136
 The max size of the token vocabulary.
-#### config.TARGET_VOCAB_SIZE = 261245
+#### config.MAX_TARGET_VOCAB_SIZE = 261245
 The max size of the target words vocabulary.
-#### config.PATHS_VOCAB_SIZE = 911417
+#### config.MAX_PATH_VOCAB_SIZE = 911417
 The max size of the path vocabulary.
 #### config.EMBEDDINGS_SIZE = 128
-Embedding size for tokens and paths.
+Default embedding size.
+#### config.TOKEN_EMBEDDINGS_SIZE = config.EMBEDDINGS_SIZE
+Embedding size for tokens.
+#### config.PATH_EMBEDDINGS_SIZE = config.EMBEDDINGS_SIZE
+Embedding size for paths.
+#### config.CODE_VECTOR_SIZE = config.PATH_EMBEDDINGS_SIZE + 2 * config.TOKEN_EMBEDDINGS_SIZE
+Size of code vectors.
+#### config.TARGET_EMBEDDINGS_SIZE = config.CODE_VECTOR_SIZE
+Embedding size for target words.
 #### config.MAX_TO_KEEP = 10
 Keep this number of newest trained versions during training.
+#### config.DROPOUT_KEEP_RATE = 0.75
+Dropout rate used during training.
 
 ## Features
 Code2vec supports the following features: 
