@@ -16,10 +16,6 @@ class Config:
         config.SHUFFLE_BUFFER_SIZE = 10000
         config.CSV_BUFFER_SIZE = 100 * 1024 * 1024  # 100 MB
 
-        config.READING_BATCH_SIZE = 1300 * 4  # not used by the new reader; TODO: remove.
-        config.NUM_BATCHING_THREADS = 2  # not used by the new reader; TODO: remove.
-        config.BATCH_QUEUE_SIZE = 300000  # not used by the new reader; TODO: remove.
-
         # model hyper-params
         config.MAX_CONTEXTS = 200
         config.MAX_TOKEN_VOCAB_SIZE = 1301136
@@ -56,10 +52,6 @@ class Config:
         self.READER_NUM_PARALLEL_BATCHES: int = 0
         self.SHUFFLE_BUFFER_SIZE: int = 0
         self.CSV_BUFFER_SIZE: int = 0
-
-        self.READING_BATCH_SIZE: int = 0  # not used by the new reader; TODO: remove.
-        self.NUM_BATCHING_THREADS: int = 0  # not used by the new reader; TODO: remove.
-        self.BATCH_QUEUE_SIZE: int = 0  # not used by the new reader; TODO: remove.
 
         # model hyper-params
         self.MAX_CONTEXTS: int = 0
