@@ -8,6 +8,7 @@ import abc
 from typing import Optional, Callable, List
 from functools import reduce
 from common import common
+from vocabularies import SpecialVocabWords
 
 
 class WordsSubtokenMetricBase(Metric):
@@ -38,6 +39,10 @@ class WordsSubtokenMetricBase(Metric):
         if sample_weight is not None:
             raise NotImplemented("WordsSubtokenMetricBase with non-None `sample_weight` is not implemented.")
 
+        # For each example in the batch we have:
+        #     (i)  one ground true target word;
+        #     (ii) one predicted word (argmax y_hat)
+
         topk_predicted_words = predictions if self.topk_predicted_words is None else self.topk_predicted_words
         assert topk_predicted_words is not None
         predicted_word = self._get_prediction_from_topk(topk_predicted_words)
@@ -45,20 +50,38 @@ class WordsSubtokenMetricBase(Metric):
         true_target_word_string = self._get_true_target_word_string(true_target_word)
         true_target_word_string = tf.reshape(true_target_word_string, [-1])
 
+        # We split each word into subtokens
         true_target_subwords = string_ops.string_split(true_target_word_string, delimiter=self.subtokens_delimiter)
         prediction_subwords = string_ops.string_split(predicted_word, delimiter=self.subtokens_delimiter)
+        true_target_subwords = tf.sparse.to_dense(true_target_subwords, default_value=SpecialVocabWords.PAD)
+        prediction_subwords = tf.sparse.to_dense(prediction_subwords, default_value=SpecialVocabWords.PAD)
+        true_target_subwords_mask = tf.not_equal(true_target_subwords, SpecialVocabWords.PAD)
+        prediction_subwords_mask = tf.not_equal(prediction_subwords, SpecialVocabWords.PAD)
+        # Now shapes of true_target_subwords & true_target_subwords are (batch, subtokens)
 
-        batch_true_positive = math_ops.cast(
-            tf.sets.size(tf.sets.intersection(true_target_subwords, prediction_subwords)), dtype=tf.float32)
-        batch_false_positive = math_ops.cast(
-            tf.sets.size(tf.sets.difference(prediction_subwords, true_target_subwords)), dtype=tf.float32)
-        batch_false_negative = math_ops.cast(
-            tf.sets.size(tf.sets.difference(true_target_subwords, prediction_subwords)), dtype=tf.float32)
+        # We use broadcast to calculate 2 lists difference with duplicates preserving.
+        true_target_subwords = tf.expand_dims(true_target_subwords, -1)
+        prediction_subwords = tf.expand_dims(prediction_subwords, -1)
+        # Now shapes of true_target_subwords & true_target_subwords are (batch, subtokens, 1)
+        true_target_subwords__in__prediction_subwords = \
+            tf.reduce_any(tf.equal(true_target_subwords, tf.transpose(prediction_subwords, perm=[0, 2, 1])), axis=2)
+        prediction_subwords__in__true_target_subwords = \
+            tf.reduce_any(tf.equal(prediction_subwords, tf.transpose(true_target_subwords, perm=[0, 2, 1])), axis=2)
+
+        # Count ground true label subwords that exist in the predicted word.
+        batch_true_positive = tf.reduce_sum(tf.cast(
+            tf.logical_and(true_target_subwords__in__prediction_subwords, true_target_subwords_mask), tf.float32))
+        # Count ground true label subwords that don't exist in the predicted word.
+        batch_false_positive = tf.reduce_sum(tf.cast(
+            tf.logical_and(~true_target_subwords__in__prediction_subwords, true_target_subwords_mask), tf.float32))
+        # Count predicted word subwords that don't exist in the ground true label.
+        batch_false_negative = tf.reduce_sum(tf.cast(
+            tf.logical_and(prediction_subwords__in__true_target_subwords, prediction_subwords_mask), tf.float32))
 
         update_ops = [
-            state_ops.assign_add(self.tp, math_ops.reduce_sum(batch_true_positive)),
-            state_ops.assign_add(self.fp, math_ops.reduce_sum(batch_false_positive)),
-            state_ops.assign_add(self.fn, math_ops.reduce_sum(batch_false_negative))
+            state_ops.assign_add(self.tp, batch_true_positive),
+            state_ops.assign_add(self.fp, batch_false_positive),
+            state_ops.assign_add(self.fn, batch_false_negative)
         ]
         return control_flow_ops.group(update_ops)
 
