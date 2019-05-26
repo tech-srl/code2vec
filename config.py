@@ -5,14 +5,22 @@ class Config:
     @staticmethod
     def get_default_config(args):
         config = Config()
-        config.DL_FRAMEWORK = 'tensorflow' if not args.dl_framework else args.dl_framework
-        config.NUM_EPOCHS = 20
+
+        config.NUM_TRAIN_EPOCHS = 20
         config.SAVE_EVERY_EPOCHS = 1
-        config.TRAIN_BATCH_SIZE = 512
+        config.TRAIN_BATCH_SIZE = 256
         config.TEST_BATCH_SIZE = config.TRAIN_BATCH_SIZE
+        config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION = 10
+        config.NUM_BATCHES_TO_LOG = 200
+        config.READER_NUM_PARALLEL_BATCHES = 4  # cpu cores [for tf.contrib.data.map_and_batch() in the reader]
+        config.SHUFFLE_BUFFER_SIZE = 10000
+        config.CSV_BUFFER_SIZE = 100 * 1024 * 1024  # 100 MB
+
         config.READING_BATCH_SIZE = 1300 * 4  # not used by the new reader; TODO: remove.
         config.NUM_BATCHING_THREADS = 2  # not used by the new reader; TODO: remove.
         config.BATCH_QUEUE_SIZE = 300000  # not used by the new reader; TODO: remove.
+
+        # model hyper-params
         config.MAX_CONTEXTS = 200
         config.MAX_TOKEN_VOCAB_SIZE = 1301136
         config.MAX_TARGET_VOCAB_SIZE = 261245
@@ -20,16 +28,10 @@ class Config:
         config.EMBEDDINGS_SIZE = 128
         config.TOKEN_EMBEDDINGS_SIZE = config.EMBEDDINGS_SIZE
         config.PATH_EMBEDDINGS_SIZE = config.EMBEDDINGS_SIZE
-        config.CONTEXT_EMBEDDINGS_SIZE = config.PATH_EMBEDDINGS_SIZE + 2 * config.TOKEN_EMBEDDINGS_SIZE
-        config.CODE_VECTOR_SIZE = config.CONTEXT_EMBEDDINGS_SIZE
+        config.CODE_VECTOR_SIZE = config.context_vector_size
         config.TARGET_EMBEDDINGS_SIZE = config.CODE_VECTOR_SIZE
         config.MAX_TO_KEEP = 10
         config.DROPOUT_KEEP_RATE = 0.75
-        config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION = 10
-
-        config.READER_NUM_PARALLEL_BATCHES = 6  # cpu cores [for tf.contrib.data.map_and_batch() in the reader]
-        config.SHUFFLE_BUFFER_SIZE = 10000
-        config.CSV_BUFFER_SIZE = 100 * 1024 * 1024  # 100 MB
 
         # Automatically filled, do not edit:
         config.TRAIN_DATA_PATH_PREFIX = args.data_path
@@ -38,17 +40,28 @@ class Config:
         config.MODEL_LOAD_PATH = args.load_path
         config.RELEASE = args.release
         config.EXPORT_CODE_VECTORS = args.export_code_vectors
+        config.VERBOSE_MODE = args.verbose_mode
+        config.SAVE_LOGS = args.save_logs
+        config.DL_FRAMEWORK = 'tensorflow' if not args.dl_framework else args.dl_framework
+
         return config
 
     def __init__(self):
-        self.DL_FRAMEWORK: str = ''  # in {'keras', 'tensorflow'}
-        self.NUM_EPOCHS: int = 0
+        self.NUM_TRAIN_EPOCHS: int = 0
         self.SAVE_EVERY_EPOCHS: int = 0
         self.TRAIN_BATCH_SIZE: int = 0
         self.TEST_BATCH_SIZE: int = 0
+        self.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION: int = 0
+        self.NUM_BATCHES_TO_LOG: int = 0
+        self.READER_NUM_PARALLEL_BATCHES: int = 0
+        self.SHUFFLE_BUFFER_SIZE: int = 0
+        self.CSV_BUFFER_SIZE: int = 0
+
         self.READING_BATCH_SIZE: int = 0  # not used by the new reader; TODO: remove.
         self.NUM_BATCHING_THREADS: int = 0  # not used by the new reader; TODO: remove.
         self.BATCH_QUEUE_SIZE: int = 0  # not used by the new reader; TODO: remove.
+
+        # model hyper-params
         self.MAX_CONTEXTS: int = 0
         self.MAX_TOKEN_VOCAB_SIZE: int = 0
         self.MAX_TARGET_VOCAB_SIZE: int = 0
@@ -56,16 +69,10 @@ class Config:
         self.EMBEDDINGS_SIZE: int = 0
         self.TOKEN_EMBEDDINGS_SIZE: int = 0
         self.PATH_EMBEDDINGS_SIZE: int = 0
-        self.CONTEXT_EMBEDDINGS_SIZE: int = 0
         self.CODE_VECTOR_SIZE: int = 0
         self.TARGET_EMBEDDINGS_SIZE: int = 0
         self.MAX_TO_KEEP: int = 0
         self.DROPOUT_KEEP_RATE: float = 0
-        self.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION: int = 0
-
-        self.READER_NUM_PARALLEL_BATCHES: int = 0
-        self.SHUFFLE_BUFFER_SIZE: int = 0
-        self.CSV_BUFFER_SIZE: int = 0
 
         # Automatically filled by `args`.
         self.MODEL_SAVE_PATH: str = ''
@@ -74,10 +81,19 @@ class Config:
         self.TEST_DATA_PATH: str = ''
         self.RELEASE: bool = False
         self.EXPORT_CODE_VECTORS: bool = False
+        self.VERBOSE_MODE: int = 0
+        self.SAVE_LOGS: bool = False
+        self.DL_FRAMEWORK: str = ''  # in {'keras', 'tensorflow'}
 
         # Automatically filled by `Code2VecModelBase._init_num_of_examples()`.
         self.NUM_TRAIN_EXAMPLES: int = 0
         self.NUM_TEST_EXAMPLES: int = 0
+
+    @property
+    def context_vector_size(self) -> int:
+        # The context vector is actually a concatenation of the embedded
+        # source & target vectors and the embedded path vector.
+        return self.PATH_EMBEDDINGS_SIZE + 2 * self.TOKEN_EMBEDDINGS_SIZE
 
     @property
     def train_steps_per_epoch(self) -> int:
@@ -108,11 +124,11 @@ class Config:
 
     @classmethod
     def get_full_model_path(cls, model_path: str):
-        return model_path + '-full'
+        return model_path + '__entire-model'
 
     @classmethod
     def get_model_weights_path(cls, model_path: str):
-        return model_path + '-only-weights'
+        return model_path + '__only-weights'
 
     @property
     def full_model_load_path(self):
