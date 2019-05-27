@@ -70,13 +70,13 @@ class WordsSubtokenMetricBase(Metric):
 
         # Count ground true label subwords that exist in the predicted word.
         batch_true_positive = tf.reduce_sum(tf.cast(
-            tf.logical_and(true_target_subwords__in__prediction_subwords, true_target_subwords_mask), tf.float32))
+            tf.logical_and(prediction_subwords__in__true_target_subwords, prediction_subwords_mask), tf.float32))
         # Count ground true label subwords that don't exist in the predicted word.
         batch_false_positive = tf.reduce_sum(tf.cast(
-            tf.logical_and(~true_target_subwords__in__prediction_subwords, true_target_subwords_mask), tf.float32))
+            tf.logical_and(~prediction_subwords__in__true_target_subwords, prediction_subwords_mask), tf.float32))
         # Count predicted word subwords that don't exist in the ground true label.
         batch_false_negative = tf.reduce_sum(tf.cast(
-            tf.logical_and(prediction_subwords__in__true_target_subwords, prediction_subwords_mask), tf.float32))
+            tf.logical_and(~true_target_subwords__in__prediction_subwords, true_target_subwords_mask), tf.float32))
 
         update_ops = [
             state_ops.assign_add(self.tp, batch_true_positive),
