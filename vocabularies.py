@@ -5,6 +5,7 @@ import os
 from enum import Enum
 from config import Config
 import tensorflow as tf
+# from ordered_set import OrderedSet
 
 
 class VocabType(Enum):
@@ -14,8 +15,8 @@ class VocabType(Enum):
 
 
 class SpecialVocabWords:
-    PAD = '<PAD>'  # padding
-    OOV = '<OOV>'  # out-of-vocabulary
+    PAD = '<PAD>'  # padding            new: <PAD>  old: NoSuchWord
+    OOV = '<OOV>'  # out-of-vocabulary  new: <OOV>  old: NoSuchWord
 
 
 class Vocab:
@@ -25,7 +26,7 @@ class Vocab:
         self._word_to_index_lookup_table = None
         self._index_to_word_lookup_table = None
 
-        for index, word in enumerate(words):
+        for index, word in enumerate(words):  # if PAD+OOV is same use: enumerate(OrderedSet(words))
             self.word_to_index[word] = index
             self.index_to_word[index] = word
 
@@ -103,19 +104,18 @@ class Code2VecVocabs:
     @classmethod
     def load_or_create(cls, config: Config) -> 'Code2VecVocabs':
         vocabularies_load_path = None
-        if not config.TRAIN_DATA_PATH_PREFIX or config.MODEL_LOAD_PATH:
+        if not config.is_training or config.is_loading:
             vocabularies_load_path = config.get_vocabularies_path_from_model_path(config.MODEL_LOAD_PATH)
             if not os.path.isfile(vocabularies_load_path):
                 vocabularies_load_path = None
         if vocabularies_load_path is None:
             return cls.create(config)
-        else:
-            return cls.load(vocabularies_load_path)
+        return cls.load(vocabularies_load_path)
 
     @classmethod
     def load(cls, vocabularies_load_path: str) -> 'Code2VecVocabs':
         with open(vocabularies_load_path, 'rb') as file:
-            print('Loading model vocabularies from: %s ... ' % vocabularies_load_path, end='')
+            print('Loading model vocabularies from: `%s` ... ' % vocabularies_load_path, end='')
             token_vocab = Vocab.load_from_file(file)
             path_vocab = Vocab.load_from_file(file)
             target_vocab = Vocab.load_from_file(file)
@@ -123,6 +123,49 @@ class Code2VecVocabs:
         vocabs = cls(token_vocab, path_vocab, target_vocab)
         vocabs._already_saved_in_paths.add(vocabularies_load_path)
         return vocabs
+
+    # @classmethod
+    # def __load_or_create(cls, config: Config) -> 'Code2VecVocabs':
+    #     format_type = 'new'
+    #     vocabularies_load_path = None
+    #     if not config.is_training or config.is_loading:
+    #         vocabularies_load_path = config.get_vocabularies_path_from_model_path(config.MODEL_LOAD_PATH)
+    #         if not os.path.isfile(vocabularies_load_path):
+    #             vocabularies_load_path = vocabularies_load_path.replace('vocabularies', 'dictionaries')
+    #             if os.path.isfile(vocabularies_load_path):
+    #                 format_type = 'old'
+    #             else:
+    #                 vocabularies_load_path = None
+    #     if vocabularies_load_path is None:
+    #         return cls.create(config)
+    #     elif format_type == 'new':
+    #         return cls.load(vocabularies_load_path)
+    #     elif format_type == 'old':
+    #         return cls.__load_old_format(vocabularies_load_path)
+    #     assert False
+    #
+    # @classmethod
+    # def __load_old_format(cls, vocabularies_load_path: str) -> 'Code2VecVocabs':
+    #     with open(vocabularies_load_path, 'rb') as file:
+    #         print('Loading model vocabularies from: `%s` ... ' % vocabularies_load_path, end='')
+    #         token_vocab = Vocab([])
+    #         path_vocab = Vocab([])
+    #         target_vocab = Vocab([])
+    #
+    #         for vocab in (token_vocab, target_vocab, path_vocab):
+    #             vocab.word_to_index = pickle.load(file)
+    #             vocab.index_to_word = pickle.load(file)
+    #             _ = pickle.load(file)
+    #             assert SpecialVocabWords.OOV not in vocab.word_to_index
+    #             assert 0 not in vocab.index_to_word
+    #             vocab.word_to_index[SpecialVocabWords.OOV] = 0
+    #             vocab.index_to_word[0] = SpecialVocabWords.OOV
+    #             vocab.size = len(vocab.word_to_index)
+    #
+    #     print('Done')
+    #     vocabs = cls(token_vocab, path_vocab, target_vocab)
+    #     vocabs._already_saved_in_paths.add(vocabularies_load_path)
+    #     return vocabs
 
     @classmethod
     def create(cls, config: Config) -> 'Code2VecVocabs':

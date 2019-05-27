@@ -37,9 +37,13 @@ class ModelPredictionResults(NamedTuple):
 class Code2VecModelBase(abc.ABC):
     def __init__(self, config: Config):
         self.config = config
+        self.config.verify()
 
-        if not config.TRAIN_DATA_PATH_PREFIX and not config.MODEL_LOAD_PATH:
-            raise ValueError("Must train or load a model.")
+        self._init_logger()
+        self.log('----------------------------------------------------------------')
+        self.log('------------------- Creating word2vec model --------------------')
+        self.log('----------------------------------------------------------------')
+
 
         self._init_num_of_examples()
         self.vocabs = Code2VecVocabs.load_or_create(config)
@@ -47,13 +51,24 @@ class Code2VecModelBase(abc.ABC):
         self._load_or_create_inner_model()
         self._initialize()
 
+    def _init_logger(self):
+        import logging
+        if self.config.LOGS_PATH:
+            logging.basicConfig(filename=self.config.LOGS_PATH, level=logging.INFO)
+        self.logger = logging.getLogger()
+
+    def log(self, msg):
+        print(msg)
+        self.logger.info(msg)
+
     def _init_num_of_examples(self):
-        print('Checking number of examples ... ', end='')
-        if self.config.TRAIN_DATA_PATH_PREFIX:
+        self.log('Checking number of examples ...')
+        if self.config.is_training:
             self.config.NUM_TRAIN_EXAMPLES = self._get_num_of_examples_for_dataset(self.config.train_data_path)
-        if self.config.TEST_DATA_PATH:
+            self.log('    Number of train examples: {}'.format(self.config.NUM_TRAIN_EXAMPLES))
+        if self.config.is_testing:
             self.config.NUM_TEST_EXAMPLES = self._get_num_of_examples_for_dataset(self.config.TEST_DATA_PATH)
-        print('Done')
+            self.log('    Number of test examples: {}'.format(self.config.NUM_TEST_EXAMPLES))
 
     @staticmethod
     def _get_num_of_examples_for_dataset(dataset_path: str) -> int:

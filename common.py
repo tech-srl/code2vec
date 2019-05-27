@@ -3,6 +3,7 @@ import numpy as np
 import tensorflow as tf
 from itertools import takewhile, repeat
 from typing import List, Optional, Tuple
+from datetime import datetime
 
 from vocabularies import SpecialVocabWords
 
@@ -185,6 +186,10 @@ class common:
             if normalized_original_name == normalized_possible_suggestion:
                 return suggestion_idx, predicted_word
         return None
+
+    @staticmethod
+    def now_str():
+        return datetime.now().strftime("%Y%m%d-%H%M%S: ")
 
 
 class MethodPredictionResults:

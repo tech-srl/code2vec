@@ -37,8 +37,9 @@ class Config:
         config.RELEASE = args.release
         config.EXPORT_CODE_VECTORS = args.export_code_vectors
         config.VERBOSE_MODE = args.verbose_mode
-        config.SAVE_LOGS = args.save_logs
+        config.LOGS_PATH = args.logs_path
         config.DL_FRAMEWORK = 'tensorflow' if not args.dl_framework else args.dl_framework
+        config.USE_TENSORBOARD = args.use_tensorboard
 
         return config
 
@@ -74,8 +75,9 @@ class Config:
         self.RELEASE: bool = False
         self.EXPORT_CODE_VECTORS: bool = False
         self.VERBOSE_MODE: int = 0
-        self.SAVE_LOGS: bool = False
+        self.LOGS_PATH: str = ''
         self.DL_FRAMEWORK: str = ''  # in {'keras', 'tensorflow'}
+        self.USE_TENSORBOARD: bool = False
 
         # Automatically filled by `Code2VecModelBase._init_num_of_examples()`.
         self.NUM_TRAIN_EXAMPLES: int = 0
@@ -86,6 +88,18 @@ class Config:
         # The context vector is actually a concatenation of the embedded
         # source & target vectors and the embedded path vector.
         return self.PATH_EMBEDDINGS_SIZE + 2 * self.TOKEN_EMBEDDINGS_SIZE
+
+    @property
+    def is_training(self):
+        return bool(self.TRAIN_DATA_PATH_PREFIX)
+
+    @property
+    def is_loading(self):
+        return bool(self.MODEL_LOAD_PATH)
+
+    @property
+    def is_testing(self):
+        return bool(self.TEST_DATA_PATH)
 
     @property
     def train_steps_per_epoch(self) -> int:
@@ -115,7 +129,7 @@ class Config:
         return '/'.join(model_file_path.split('/')[:-1] + [vocabularies_save_file_name])
 
     @classmethod
-    def get_full_model_path(cls, model_path: str):
+    def get_entire_model_path(cls, model_path: str):
         return model_path + '__entire-model'
 
     @classmethod
@@ -124,16 +138,20 @@ class Config:
 
     @property
     def full_model_load_path(self):
-        return self.get_full_model_path(self.MODEL_LOAD_PATH)
+        return self.get_entire_model_path(self.MODEL_LOAD_PATH)
 
     @property
     def model_weights_load_path(self):
         return self.get_model_weights_path(self.MODEL_LOAD_PATH)
 
     @property
-    def full_model_save_path(self):
-        return self.get_full_model_path(self.MODEL_SAVE_PATH)
+    def entire_model_save_path(self):
+        return self.get_entire_model_path(self.MODEL_SAVE_PATH)
 
     @property
     def model_weights_save_path(self):
         return self.get_model_weights_path(self.MODEL_SAVE_PATH)
+
+    def verify(self):
+        if not self.is_training and not self.is_loading:
+            raise ValueError("Must train or load a model.")

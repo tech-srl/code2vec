@@ -11,6 +11,7 @@ import numpy as np
 from functools import partial
 from typing import List, Optional, Iterable, Union, Callable, Dict
 from collections import namedtuple
+import time
 from vocabularies import SpecialVocabWords, VocabType
 from keras_attention_layer import AttentionLayer
 from keras_topk_word_predictions_layer import TopKWordPredictionsLayer
@@ -24,15 +25,36 @@ class ModelCheckpointSaverCallback(Callback):
     def __init__(self, code2vec_model: 'Code2VecModel'):
         self.code2vec_model = code2vec_model
         self.last_saved_epoch = code2vec_model.nr_epochs_trained
+        self.multi_batch_start_time: int = 0
+        self.epoch_start_time: int = 0
         super(ModelCheckpointSaverCallback, self).__init__()
 
     def on_epoch_end(self, epoch, logs=None):
         assert self.code2vec_model.nr_epochs_trained == epoch
         self.code2vec_model.nr_epochs_trained += 1
+        self.code2vec_model.trained_full_last_epoch = True
         nr_non_saved_epochs = self.code2vec_model.nr_epochs_trained - self.last_saved_epoch
         if nr_non_saved_epochs >= self.code2vec_model.config.SAVE_EVERY_EPOCHS:
-            self.code2vec_model.save()
+            # self.code2vec_model.save()  # TODO: put back!
             self.last_saved_epoch = self.code2vec_model.nr_epochs_trained
+        self.code2vec_model.log('Completed epoch #{}: {}'.format(self.code2vec_model.nr_epochs_trained, logs))
+
+    def on_epoch_begin(self, epoch, logs=None):
+        self.code2vec_model.trained_full_last_epoch = False
+        self.multi_batch_start_time = time.time()
+
+    def on_batch_end(self, batch, logs=None):
+        if (batch + 1) % self.code2vec_model.config.NUM_BATCHES_TO_LOG == 0:
+            self.on_multi_batch_end(batch, logs)
+
+    def on_multi_batch_end(self, batch, logs=None):
+        multi_batch_elapsed = time.time() - self.multi_batch_start_time
+        nr_samples_in_multi_batch = self.code2vec_model.config.TRAIN_BATCH_SIZE * self.code2vec_model.config.NUM_BATCHES_TO_LOG
+        throughput = nr_samples_in_multi_batch / multi_batch_elapsed
+        self.code2vec_model.log(
+            'During epoch #{epoch} batch #{batch} -- throughput (#samples/sec): {throughput} -- metrics: {logs}'.format(
+                epoch=self.code2vec_model.nr_epochs_trained+1, batch=batch+1, throughput=throughput, logs=str(logs)))
+        self.multi_batch_start_time = time.time()
 
 
 class _KerasModelInputTensorsFormer(ModelInputTensorsFormer):
@@ -73,8 +95,9 @@ class Code2VecModel(Code2VecModelBase):
         self.keras_model: Optional[keras.Model] = None
         self.keras_model_predict_function: Optional[K.GraphExecutionFunction] = None
         self.nr_epochs_trained: int = 0
+        self.trained_full_last_epoch: bool = False
         self._checkpoint: Optional[tf.train.Checkpoint] = None
-        self._save_checkpoint_manager: Optional[tf.train.CheckpointManager] = None
+        self._checkpoint_manager: Optional[tf.train.CheckpointManager] = None
         super(Code2VecModel, self).__init__(config)
 
     def _create_keras_model(self):
@@ -184,15 +207,25 @@ class Code2VecModel(Code2VecModelBase):
         # TODO: do we want to use early stopping? if so, use the right chechpoint manager and set the correct
         #       `monitor` quantity (example: monitor='val_acc', mode='max')
 
-        self.keras_model.fit(
+        keras_callbacks = [ModelCheckpointSaverCallback(self)]
+        if self.config.USE_TENSORBOARD:
+            log_dir = "logs/scalars/train_" + common.now_str()
+            tensorboard_callback = keras.callbacks.TensorBoard(
+                log_dir=log_dir, update_freq=self.config.NUM_BATCHES_TO_LOG * self.config.TRAIN_BATCH_SIZE)
+            keras_callbacks.append(tensorboard_callback)
+
+        training_history = self.keras_model.fit(
             train_data_input_reader.get_dataset(),
             steps_per_epoch=self.config.train_steps_per_epoch,
-            epochs=self.config.NUM_EPOCHS,
+            epochs=self.config.NUM_TRAIN_EPOCHS,
             initial_epoch=self.nr_epochs_trained,
             batch_size=self.config.TRAIN_BATCH_SIZE,
             validation_data=val_data_input_reader.get_dataset(),
             validation_steps=self.config.test_steps_per_epoch,
-            callbacks=[ModelCheckpointSaverCallback(self)])
+            verbose=self.config.VERBOSE_MODE,
+            callbacks=keras_callbacks)
+
+        self.log(training_history)
 
     def evaluate(self) -> Optional[ModelEvaluationResults]:
         val_data_input_reader = self._create_data_reader(estimator_action=EstimatorAction.Evaluate)
@@ -250,7 +283,7 @@ class Code2VecModel(Code2VecModelBase):
             self.keras_model.save_weights(self.config.get_model_weights_path(path))
         else:
             with K.get_session().as_default():
-                self._get_save_checkpoint_manager().save(checkpoint_number=self.nr_epochs_trained)
+                self._get_checkpoint_manager().save(checkpoint_number=self.nr_epochs_trained)
 
     def _create_inner_model(self):
         self._create_keras_model()
@@ -262,18 +295,30 @@ class Code2VecModel(Code2VecModelBase):
         self._compile_keras_model()
 
         # when loading the model for further training, we must use the full saved model file (not just weights).
-        must_use_full_model = self.config.TRAIN_DATA_PATH_PREFIX
-        if must_use_full_model and not os.path.exists(self.config.full_model_load_path):
+        # we load the entire model if we must to or if there is no model weights file to load.
+        must_use_entire_model = self.config.is_training
+        entire_model_exists = os.path.exists(self.config.entire_model_load_path)
+        model_weights_exist = os.path.exists(self.config.model_weights_load_path)
+        use_full_model = must_use_entire_model or not model_weights_exist
+
+        if must_use_entire_model and not entire_model_exists:
             raise ValueError(
                 "There is no model at path `{model_file_path}`. When loading the model for further training, "
-                "we must use a full saved model file (not just weights).".format(
-                    model_file_path=self.config.full_model_load_path))
-        use_full_model = must_use_full_model or not os.path.exists(self.config.model_weights_load_path)
+                "we must use an entire saved model file (not just weights).".format(
+                    model_file_path=self.config.entire_model_load_path))
+        if not entire_model_exists and not model_weights_exist:
+            raise ValueError(
+                "There is no entire model to load at path `{entire_model_path}`, "
+                "and there is no model weights file to load at path `{model_weights_path}`.".format(
+                    entire_model_path=self.config.entire_model_load_path,
+                    model_weights_path=self.config.model_weights_load_path))
 
         if use_full_model:
-            latest_checkpoint = tf.train.latest_checkpoint(self.config.full_model_load_path)
-            print('Loading latest checkpoint `{}`.'.format(latest_checkpoint))
-            status = self._get_checkpoint().restore(tf.train.latest_checkpoint(self.config.full_model_load_path))
+            latest_checkpoint = tf.train.latest_checkpoint(self.config.entire_model_load_path)
+            if latest_checkpoint is None:
+                raise ValueError("Failed to load model: Model latest checkpoint is not found.")
+            self.log('Loading latest checkpoint `{}`.'.format(latest_checkpoint))
+            status = self._get_checkpoint().restore(latest_checkpoint)
             status.initialize_or_restore(K.get_session())
             self._compile_keras_model()  # We have to re-compile because we also recovered the `tf.train.AdamOptimizer`.
             self.nr_epochs_trained = int(latest_checkpoint.split('-')[-1])
@@ -281,7 +326,7 @@ class Code2VecModel(Code2VecModelBase):
             # load the "released" model (only the weights).
             self.keras_model.load_weights(self.config.model_weights_load_path)
 
-        self.keras_model.summary()
+        self.keras_model.summary(print_fn=self.log)
 
     def _get_checkpoint(self):
         assert self.keras_model is not None and self.keras_model.optimizer is not None
@@ -289,11 +334,12 @@ class Code2VecModel(Code2VecModelBase):
             self._checkpoint = tf.train.Checkpoint(optimizer=self.keras_model.optimizer, model=self.keras_model)
         return self._checkpoint
 
-    def _get_save_checkpoint_manager(self):
-        if self._save_checkpoint_manager is None:
-            self._save_checkpoint_manager = tf.train.CheckpointManager(
-                self._get_checkpoint(), self.config.full_model_save_path, max_to_keep=self.config.MAX_TO_KEEP)
-        return self._save_checkpoint_manager
+    def _get_checkpoint_manager(self):
+        if self._checkpoint_manager is None:
+            self._checkpoint_manager = tf.train.CheckpointManager(
+                self._get_checkpoint(), self.config.entire_model_save_path,
+                max_to_keep=self.config.MAX_TO_KEEP)
+        return self._checkpoint_manager
 
     def _get_vocab_embedding_as_np_array(self, vocab_type: VocabType) -> np.ndarray:
         assert vocab_type in VocabType
@@ -318,7 +364,7 @@ class Code2VecModel(Code2VecModelBase):
     def _initialize_tables(self):
         PathContextReader.create_needed_vocabs_lookup_tables(self.vocabs)
         K.get_session().run(tf.tables_initializer())
-        print('Initalized tables')
+        self.log('Initalized tables')
 
     def _initialize(self):
         self._initialize_tables()

@@ -45,12 +45,23 @@ if __name__ == '__main__':
                         help='execute the interactive prediction shell')
     parser.add_argument("-fw", "--framework", dest="dl_framework", choices=['keras', 'tensorflow'],
                         default='tensorflow', help="deep learning framework to use.")
+    parser.add_argument("-v", "--verbose", dest="verbose_mode", type=int, required=False, default=1,
+                        help="verbose mode (should be in {0,1,2}).")
+    parser.add_argument("-lp", "--logs-path", dest="logs_path", metavar="FILE", required=False,
+                        help="path to store logs into. if not given logs are not saved to file.")
+    parser.add_argument('-tb', '--tensorboard', dest='use_tensorboard', action='store_true',
+                        help='use tensorboard during training')
     args = parser.parse_args()
 
     config = Config.get_default_config(args)
 
     model = load_model_dynamically(config)
     print('Created model')
+
+    # TODO: remove!
+    # model.vocabs.save(config.get_vocabularies_path_from_model_path(config.MODEL_SAVE_PATH))
+    # exit()
+
     if config.TRAIN_DATA_PATH_PREFIX:
         model.train()
     if args.save_w2v is not None:

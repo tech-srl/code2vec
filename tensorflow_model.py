@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 import time
 from typing import Dict, Optional, List, Iterable
+from collections import Counter
 
 from path_context_reader import PathContextReader, ModelInputTensorsFormer, ReaderInputTensors, EstimatorAction
 from common import common
@@ -46,8 +47,6 @@ class _TFEvaluateModelInputTensorsFormer(ModelInputTensorsFormer):
 
 
 class Code2VecModel(Code2VecModelBase):
-    num_batches_to_log = 100  # TODO: consider exporting to Config or to method param with default value.
-
     def __init__(self, config: Config):
         self.sess = tf.Session()
         self.saver = None
@@ -62,8 +61,8 @@ class Code2VecModel(Code2VecModelBase):
         self.predict_top_words_op, self.predict_top_values_op, self.predict_original_names_op = None, None, None
 
         self.vocab_type_to_tf_variable_name_mapping: Dict[VocabType, str] = {
-            VocabType.Token: 'TOKENS_VOCAB',
-            VocabType.Target: 'TARGETS_VOCAB',
+            VocabType.Token: 'TOKENS_VOCAB',    # old: WORDS_VOCAB         new: TOKENS_VOCAB
+            VocabType.Target: 'TARGETS_VOCAB',  # old: TARGET_WORDS_VOCAB  new: TARGETS_VOCAB
             VocabType.Path: 'PATHS_VOCAB'
         }
 
@@ -76,7 +75,7 @@ class Code2VecModel(Code2VecModelBase):
         batch_num = 0
         sum_loss = 0
         multi_batch_start_time = time.time()
-        num_batches_to_evaluate = max(int(self.config.train_steps_per_epoch * self.config.SAVE_EVERY_EPOCHS), 1)
+        num_batches_to_save_and_eval = max(int(self.config.train_steps_per_epoch * self.config.SAVE_EVERY_EPOCHS), 1)
 
         train_reader = PathContextReader(vocabs=self.vocabs,
                                          model_input_tensors_former=_TFTrainModelInputTensorsFormer(),
@@ -106,14 +105,14 @@ class Code2VecModel(Code2VecModelBase):
                 _, batch_loss = self.sess.run([optimizer, train_loss])
 
                 sum_loss += batch_loss
-                if batch_num % self.num_batches_to_log == 0:
+                if batch_num % self.config.NUM_BATCHES_TO_LOG == 0:
                     self._trace_training(sum_loss, batch_num, multi_batch_start_time)
                     print('Number of waiting examples in queue: %d' % self.sess.run(
                         "shuffle_batch/random_shuffle_queue_Size:0"))
                     sum_loss = 0
                     multi_batch_start_time = time.time()
-                if batch_num % num_batches_to_evaluate == 0:
-                    epoch_num = int((batch_num / num_batches_to_evaluate) * self.config.SAVE_EVERY_EPOCHS)
+                if batch_num % num_batches_to_save_and_eval == 0:
+                    epoch_num = int((batch_num / num_batches_to_save_and_eval) * self.config.SAVE_EVERY_EPOCHS)
                     save_path = self.config.MODEL_SAVE_PATH + '_iter' + str(epoch_num)
                     self._save_inner_model(save_path)
                     print('Saved after %d epochs in: %s' % (epoch_num, save_path))
@@ -188,14 +187,14 @@ class Code2VecModel(Code2VecModelBase):
                     original_names = common.binary_to_string_list(original_names)  # (batch,)
 
                     self._log_predictions_during_evaluation(zip(original_names, top_words), log_output_file)
-                    topk_accuracy_evaluation_metric.update(zip(original_names, top_words))
-                    subtokens_evaluation_metric.update(zip(original_names, top_words))
+                    topk_accuracy_evaluation_metric.update_batch(zip(original_names, top_words))
+                    subtokens_evaluation_metric.update_batch(zip(original_names, top_words))
 
                     total_predictions += len(original_names)
                     total_prediction_batches += 1
                     if self.config.EXPORT_CODE_VECTORS:
                         self._write_code_vectors(code_vectors_file, code_vectors)
-                    if total_prediction_batches % self.num_batches_to_log == 0:
+                    if total_prediction_batches % self.config.NUM_BATCHES_TO_LOG == 0:
                         elapsed = time.time() - start_time
                         # start_time = time.time()
                         self._trace_evaluation(total_predictions, elapsed)
@@ -224,18 +223,18 @@ class Code2VecModel(Code2VecModelBase):
 
         with tf.variable_scope('model'):
             tokens_vocab = tf.get_variable(
-                'TOKENS_VOCAB',
+                self.vocab_type_to_tf_variable_name_mapping[VocabType.Token],
                 shape=(self.vocabs.token_vocab.size, self.config.TOKEN_EMBEDDINGS_SIZE), dtype=tf.float32,
                 initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, mode='FAN_OUT', uniform=True))
             targets_vocab = tf.get_variable(
-                'TARGETS_VOCAB',
+                self.vocab_type_to_tf_variable_name_mapping[VocabType.Target],
                 shape=(self.vocabs.target_vocab.size, self.config.TARGET_EMBEDDINGS_SIZE), dtype=tf.float32,
                 initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, mode='FAN_OUT', uniform=True))
             attention_param = tf.get_variable(
                 'ATTENTION',
                 shape=(self.config.CODE_VECTOR_SIZE, 1), dtype=tf.float32)
             paths_vocab = tf.get_variable(
-                'PATHS_VOCAB',
+                self.vocab_type_to_tf_variable_name_mapping[VocabType.Path],
                 shape=(self.vocabs.path_vocab.size, self.config.PATH_EMBEDDINGS_SIZE), dtype=tf.float32,
                 initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, mode='FAN_OUT', uniform=True))
 
@@ -265,9 +264,9 @@ class Code2VecModel(Code2VecModelBase):
         if not is_evaluating:
             context_embed = tf.nn.dropout(context_embed, self.config.DROPOUT_KEEP_RATE)
 
-        flat_embed = tf.reshape(context_embed, [-1, self.config.CONTEXT_EMBEDDINGS_SIZE])  # (batch * max_contexts, dim * 3)
+        flat_embed = tf.reshape(context_embed, [-1, self.config.context_vector_size])  # (batch * max_contexts, dim * 3)
         transform_param = tf.get_variable(
-            'TRANSFORM', shape=(self.config.CONTEXT_EMBEDDINGS_SIZE, self.config.CODE_VECTOR_SIZE), dtype=tf.float32)
+            'TRANSFORM', shape=(self.config.context_vector_size, self.config.CODE_VECTOR_SIZE), dtype=tf.float32)
 
         flat_embed = tf.tanh(tf.matmul(flat_embed, transform_param))  # (batch * max_contexts, dim * 3)
 
@@ -287,16 +286,19 @@ class Code2VecModel(Code2VecModelBase):
     def _build_tf_test_graph(self, input_tensors, normalize_scores=False):
         with tf.variable_scope('model', reuse=self.get_should_reuse_variables()):
             tokens_vocab = tf.get_variable(
-                'TOKENS_VOCAB', shape=(self.vocabs.token_vocab.size, self.config.TOKEN_EMBEDDINGS_SIZE),
+                self.vocab_type_to_tf_variable_name_mapping[VocabType.Token],
+                shape=(self.vocabs.token_vocab.size, self.config.TOKEN_EMBEDDINGS_SIZE),
                 dtype=tf.float32, trainable=False)
             targets_vocab = tf.get_variable(
-                'TARGETS_VOCAB', shape=(self.vocabs.target_vocab.size, self.config.TARGET_EMBEDDINGS_SIZE),
+                self.vocab_type_to_tf_variable_name_mapping[VocabType.Target],
+                shape=(self.vocabs.target_vocab.size, self.config.TARGET_EMBEDDINGS_SIZE),
                 dtype=tf.float32, trainable=False)
             attention_param = tf.get_variable(
-                'ATTENTION', shape=(self.config.CONTEXT_EMBEDDINGS_SIZE, 1),
+                'ATTENTION', shape=(self.config.context_vector_size, 1),
                 dtype=tf.float32, trainable=False)
             paths_vocab = tf.get_variable(
-                'PATHS_VOCAB', shape=(self.vocabs.path_vocab.size, self.config.PATH_EMBEDDINGS_SIZE),
+                self.vocab_type_to_tf_variable_name_mapping[VocabType.Path],
+                shape=(self.vocabs.path_vocab.size, self.config.PATH_EMBEDDINGS_SIZE),
                 dtype=tf.float32, trainable=False)
 
             targets_vocab = tf.transpose(targets_vocab)  # (dim * 3, target_word_vocab)
@@ -423,8 +425,8 @@ class Code2VecModel(Code2VecModelBase):
 
     def _trace_training(self, sum_loss, batch_num, multi_batch_start_time):
         multi_batch_elapsed = time.time() - multi_batch_start_time
-        avg_loss = sum_loss / (self.num_batches_to_log * self.config.TRAIN_BATCH_SIZE)
-        throughput = self.config.TRAIN_BATCH_SIZE * self.num_batches_to_log / \
+        avg_loss = sum_loss / (self.config.NUM_BATCHES_TO_LOG * self.config.TRAIN_BATCH_SIZE)
+        throughput = self.config.TRAIN_BATCH_SIZE * self.config.NUM_BATCHES_TO_LOG / \
                      (multi_batch_elapsed if multi_batch_elapsed > 0 else 1)
         print('Average loss at batch %d: %f, \tthroughput: %d samples/sec' % (
             batch_num, avg_loss, throughput))
@@ -453,14 +455,17 @@ class SubtokensEvaluationMetric:
         self.nr_false_negatives: int = 0
         self.nr_predictions: int = 0
 
-    def update(self, results):
+    def update_batch(self, results):
         for original_name, top_words in results:
             prediction = common.filter_impossible_names(top_words)[0]
-            original_subtokens = set(common.get_subtokens(original_name))
-            predicted_subtokens = set(common.get_subtokens(prediction))
-            self.nr_true_positives += len(predicted_subtokens & original_subtokens)
-            self.nr_false_positives += len(predicted_subtokens - original_subtokens)
-            self.nr_false_negatives += len(original_subtokens - predicted_subtokens)
+            original_subtokens = Counter(common.get_subtokens(original_name))
+            predicted_subtokens = Counter(common.get_subtokens(prediction))
+            self.nr_true_positives += sum(count for element, count in predicted_subtokens.items()
+                                          if element in original_subtokens)
+            self.nr_false_positives += sum(count for element, count in predicted_subtokens.items()
+                                           if element not in original_subtokens)
+            self.nr_false_negatives += sum(count for element, count in original_subtokens.items()
+                                           if element not in predicted_subtokens)
             self.nr_predictions += 1
 
     @property
@@ -494,7 +499,7 @@ class TopKAccuracyEvaluationMetric:
         self.nr_correct_predictions = np.zeros(self.top_k)
         self.nr_predictions: int = 0
 
-    def update(self, results):
+    def update_batch(self, results):
         for original_name, top_predicted_words in results:
             self.nr_predictions += 1
             found_match = common.get_first_match_word_from_top_predictions(original_name, top_predicted_words)

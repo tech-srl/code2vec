@@ -122,19 +122,20 @@ class PathContextReader:
         if self.repeat_endlessly:
             dataset = dataset.repeat()
         if self.estimator_action.is_train:
-            if not self.repeat_endlessly and self.config.NUM_EPOCHS > 1:
-                dataset = dataset.repeat(self.config.NUM_EPOCHS)
+            if not self.repeat_endlessly and self.config.NUM_TRAIN_EPOCHS > 1:
+                dataset = dataset.repeat(self.config.NUM_TRAIN_EPOCHS)
             dataset = dataset.shuffle(self.config.SHUFFLE_BUFFER_SIZE, reshuffle_each_iteration=True)
 
         dataset = dataset.map(self._map_raw_dataset_row_to_expected_model_input_form,
                               num_parallel_calls=self.config.READER_NUM_PARALLEL_BATCHES)
+        batch_size = self.config.batch_size(is_evaluating=self.estimator_action.is_evaluate)
         if self.estimator_action.is_predict:
             dataset = dataset.batch(1)
         else:
             dataset = dataset.filter(self._filter_input_rows)
-            dataset = dataset.batch(self.config.batch_size(is_evaluating=self.estimator_action.is_evaluate))
+            dataset = dataset.batch(batch_size)
 
-        dataset = dataset.prefetch(tf.contrib.data.AUTOTUNE)
+        dataset = dataset.prefetch(buffer_size=40)  # original: tf.contrib.data.AUTOTUNE) -- got OOM err; 10 seems promising.
         return dataset
 
     def _filter_input_rows(self, *row_parts) -> tf.bool:
