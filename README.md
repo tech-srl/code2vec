@@ -169,8 +169,8 @@ The max size of the token vocabulary.
 The max size of the target words vocabulary.
 #### config.MAX_PATH_VOCAB_SIZE = 911417
 The max size of the path vocabulary.
-#### config.EMBEDDINGS_SIZE = 128
-Default embedding size.
+#### config.DEFAULT_EMBEDDINGS_SIZE = 128
+Default embedding size to be used for token and path if not specified otherwise.
 #### config.TOKEN_EMBEDDINGS_SIZE = config.EMBEDDINGS_SIZE
 Embedding size for tokens.
 #### config.PATH_EMBEDDINGS_SIZE = config.EMBEDDINGS_SIZE

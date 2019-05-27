@@ -21,9 +21,9 @@ class Config:
         config.MAX_TOKEN_VOCAB_SIZE = 1301136
         config.MAX_TARGET_VOCAB_SIZE = 261245
         config.MAX_PATH_VOCAB_SIZE = 911417
-        config.EMBEDDINGS_SIZE = 128
-        config.TOKEN_EMBEDDINGS_SIZE = config.EMBEDDINGS_SIZE
-        config.PATH_EMBEDDINGS_SIZE = config.EMBEDDINGS_SIZE
+        config.DEFAULT_EMBEDDINGS_SIZE = 128
+        config.TOKEN_EMBEDDINGS_SIZE = config.DEFAULT_EMBEDDINGS_SIZE
+        config.PATH_EMBEDDINGS_SIZE = config.DEFAULT_EMBEDDINGS_SIZE
         config.CODE_VECTOR_SIZE = config.context_vector_size
         config.TARGET_EMBEDDINGS_SIZE = config.CODE_VECTOR_SIZE
         config.MAX_TO_KEEP = 10
@@ -59,7 +59,7 @@ class Config:
         self.MAX_TOKEN_VOCAB_SIZE: int = 0
         self.MAX_TARGET_VOCAB_SIZE: int = 0
         self.MAX_PATH_VOCAB_SIZE: int = 0
-        self.EMBEDDINGS_SIZE: int = 0
+        self.DEFAULT_EMBEDDINGS_SIZE: int = 0
         self.TOKEN_EMBEDDINGS_SIZE: int = 0
         self.PATH_EMBEDDINGS_SIZE: int = 0
         self.CODE_VECTOR_SIZE: int = 0
@@ -103,11 +103,11 @@ class Config:
 
     @property
     def train_steps_per_epoch(self) -> int:
-        return ceil(self.NUM_TRAIN_EXAMPLES / self.TRAIN_BATCH_SIZE)
+        return ceil(self.NUM_TRAIN_EXAMPLES / self.TRAIN_BATCH_SIZE) if self.TRAIN_BATCH_SIZE else 0
 
     @property
     def test_steps_per_epoch(self) -> int:
-        return ceil(self.NUM_TEST_EXAMPLES / self.TEST_BATCH_SIZE)
+        return ceil(self.NUM_TEST_EXAMPLES / self.TEST_BATCH_SIZE) if self.TEST_BATCH_SIZE else 0
 
     def data_path(self, is_evaluating: bool = False):
         return self.TEST_DATA_PATH if is_evaluating else self.train_data_path
@@ -155,3 +155,15 @@ class Config:
     def verify(self):
         if not self.is_training and not self.is_loading:
             raise ValueError("Must train or load a model.")
+
+    def __iter__(self):
+        for attr_name in dir(self):
+            if attr_name.startswith("__"):
+                continue
+            try:
+                attr_value = getattr(self, attr_name)
+            except:
+                attr_value = None
+            if callable(attr_value):
+                continue
+            yield attr_name, attr_value

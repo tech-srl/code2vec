@@ -191,6 +191,12 @@ class common:
     def now_str():
         return datetime.now().strftime("%Y%m%d-%H%M%S: ")
 
+    @staticmethod
+    def chunks(l, n):
+        """Yield successive n-sized chunks from l."""
+        for i in range(0, len(l), n):
+            yield l[i:i + n]
+
 
 class MethodPredictionResults:
     def __init__(self, original_name):
