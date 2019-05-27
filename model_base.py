@@ -40,21 +40,42 @@ class Code2VecModelBase(abc.ABC):
         self.config.verify()
 
         self._init_logger()
-        self.log('----------------------------------------------------------------')
-        self.log('------------------- Creating word2vec model --------------------')
-        self.log('----------------------------------------------------------------')
-
+        self._log_creating_model()
 
         self._init_num_of_examples()
+        self._log_model_configuration()
         self.vocabs = Code2VecVocabs.load_or_create(config)
         self.vocabs.target_vocab.get_index_to_word_lookup_table()  # just to initialize it (if not already initialized)
         self._load_or_create_inner_model()
         self._initialize()
 
+    def _log_creating_model(self):
+        self.log('')
+        self.log('')
+        self.log('---------------------------------------------------------------------')
+        self.log('---------------------------------------------------------------------')
+        self.log('---------------------- Creating word2vec model ----------------------')
+        self.log('---------------------------------------------------------------------')
+        self.log('---------------------------------------------------------------------')
+
+    def _log_model_configuration(self):
+        self.log('---------------------------------------------------------------------')
+        self.log('----------------- Configuration - Hyper Parameters ------------------')
+        longest_param_name_len = max(len(param_name) for param_name, _ in self.config)
+        for param_name, param_val in self.config:
+            self.log('{name: <{name_len}}{val}'.format(
+                name=param_name, val=param_val, name_len=longest_param_name_len+2))
+        self.log('---------------------------------------------------------------------')
+
     def _init_logger(self):
         import logging
         if self.config.LOGS_PATH:
-            logging.basicConfig(filename=self.config.LOGS_PATH, level=logging.INFO)
+            logging.basicConfig(
+                filename=self.config.LOGS_PATH,
+                level=logging.INFO,
+                format='%(asctime)s %(levelname)-8s %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
         self.logger = logging.getLogger()
 
     def log(self, msg):
