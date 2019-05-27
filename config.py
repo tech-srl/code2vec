@@ -137,7 +137,7 @@ class Config:
         return model_path + '__only-weights'
 
     @property
-    def full_model_load_path(self):
+    def entire_model_load_path(self):
         return self.get_entire_model_path(self.MODEL_LOAD_PATH)
 
     @property

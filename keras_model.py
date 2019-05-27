@@ -314,6 +314,7 @@ class Code2VecModel(Code2VecModelBase):
                     model_weights_path=self.config.model_weights_load_path))
 
         if use_full_model:
+            self.log('Loading entire model from path `{}`.'.format(self.config.entire_model_load_path))
             latest_checkpoint = tf.train.latest_checkpoint(self.config.entire_model_load_path)
             if latest_checkpoint is None:
                 raise ValueError("Failed to load model: Model latest checkpoint is not found.")
@@ -324,6 +325,7 @@ class Code2VecModel(Code2VecModelBase):
             self.nr_epochs_trained = int(latest_checkpoint.split('-')[-1])
         else:
             # load the "released" model (only the weights).
+            self.log('Loading model weights from path `{}`.'.format(self.config.model_weights_load_path))
             self.keras_model.load_weights(self.config.model_weights_load_path)
 
         self.keras_model.summary(print_fn=self.log)
