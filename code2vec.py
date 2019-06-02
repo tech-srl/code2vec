@@ -17,6 +17,7 @@ def load_model_dynamically(config: Config) -> Code2VecModelBase:
 
 
 if __name__ == '__main__':
+    # TODO: move args parsing to config!
     parser = ArgumentParser()
     parser.add_argument("-d", "--data", dest="data_path",
                         help="path to preprocessed dataset", required=False)
@@ -62,7 +63,7 @@ if __name__ == '__main__':
     # model.vocabs.save(config.get_vocabularies_path_from_model_path(config.MODEL_SAVE_PATH))
     # exit()
 
-    if config.TRAIN_DATA_PATH_PREFIX:
+    if config.is_training:
         model.train()
     if args.save_w2v is not None:
         model.save_word2vec_format(args.save_w2v, VocabType.Token)
@@ -70,7 +71,7 @@ if __name__ == '__main__':
     if args.save_t2v is not None:
         model.save_word2vec_format(args.save_t2v, VocabType.Target)
         print('Target word vectors saved in word2vec text format in: %s' % args.save_t2v)
-    if config.TEST_DATA_PATH and not args.data_path:
+    if config.is_testing and not config.is_training:
         eval_results = model.evaluate()
         if eval_results is not None:
             print(str(eval_results).replace('topk', 'top{}'.format(config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION)))
