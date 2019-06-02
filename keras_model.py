@@ -36,7 +36,7 @@ class ModelEvaluateCallback(Callback):
         self.multi_batch_start_time = time.time()
 
     def on_epoch_end(self, epoch, logs=None):
-        self.code2vec_model.log('Completed epoch #{}: {}'.format(epoch + 1, logs))
+        self.log('Completed epoch #{}: {}'.format(epoch + 1, logs))
 
     def on_batch_end(self, batch, logs=None):
         if (batch + 1) % self.code2vec_model.config.NUM_BATCHES_TO_LOG == 0:
