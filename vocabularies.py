@@ -5,7 +5,7 @@ import os
 from enum import Enum
 from config import Config
 import tensorflow as tf
-# from ordered_set import OrderedSet
+# from ordered_set import OrderedSet  # pip install ordered-set
 
 
 class VocabType(Enum):
