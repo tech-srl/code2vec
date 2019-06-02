@@ -1,58 +1,100 @@
 from math import ceil
+from typing import Optional
+import logging
+from argparse import ArgumentParser
 
 
 class Config:
-    @staticmethod
-    def get_default_config(args):
-        config = Config()
+    @classmethod
+    def arguments_parser(cls) -> ArgumentParser:
+        parser = ArgumentParser()
+        parser.add_argument("-d", "--data", dest="data_path",
+                            help="path to preprocessed dataset", required=False)
+        parser.add_argument("-te", "--test", dest="test_path",
+                            help="path to test file", metavar="FILE", required=False)
+        parser.add_argument("-s", "--save", dest="save_path",
+                            help="path to save the model file", metavar="FILE", required=False)
+        parser.add_argument("-w2v", "--save_word2v", dest="save_w2v",
+                            help="path to save the tokens embeddings file", metavar="FILE", required=False)
+        parser.add_argument("-t2v", "--save_target2v", dest="save_t2v",
+                            help="path to save the targets embeddings file", metavar="FILE", required=False)
+        parser.add_argument("-l", "--load", dest="load_path",
+                            help="path to load the model from", metavar="FILE", required=False)
+        parser.add_argument('--save_w2v', dest='save_w2v', required=False,
+                            help="save word (token) vectors in word2vec format")
+        parser.add_argument('--save_t2v', dest='save_t2v', required=False,
+                            help="save target vectors in word2vec format")
+        parser.add_argument('--export_code_vectors', action='store_true', required=False,
+                            help="export code vectors for the given examples")
+        parser.add_argument('--release', action='store_true',
+                            help='if specified and loading a trained model, release the loaded model for a lower model '
+                                 'size.')
+        parser.add_argument('--predict', action='store_true',
+                            help='execute the interactive prediction shell')
+        parser.add_argument("-fw", "--framework", dest="dl_framework", choices=['keras', 'tensorflow'],
+                            default='tensorflow', help="deep learning framework to use.")
+        parser.add_argument("-v", "--verbose", dest="verbose_mode", type=int, required=False, default=1,
+                            help="verbose mode (should be in {0,1,2}).")
+        parser.add_argument("-lp", "--logs-path", dest="logs_path", metavar="FILE", required=False,
+                            help="path to store logs into. if not given logs are not saved to file.")
+        parser.add_argument('-tb', '--tensorboard', dest='use_tensorboard', action='store_true',
+                            help='use tensorboard during training')
+        return parser
 
-        config.NUM_TRAIN_EPOCHS = 20
-        config.SAVE_EVERY_EPOCHS = 1
-        config.TRAIN_BATCH_SIZE = 1024
-        config.TEST_BATCH_SIZE = config.TRAIN_BATCH_SIZE
-        config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION = 10
-        config.NUM_BATCHES_TO_LOG = 100
-        config.READER_NUM_PARALLEL_BATCHES = 6  # cpu cores [for tf.contrib.data.map_and_batch() in the reader]
-        config.SHUFFLE_BUFFER_SIZE = 10000
-        config.CSV_BUFFER_SIZE = 100 * 1024 * 1024  # 100 MB
+    def set_defaults(self):
+        self.NUM_TRAIN_EPOCHS = 20
+        self.SAVE_EVERY_EPOCHS = 1
+        self.TRAIN_BATCH_SIZE = 1024
+        self.TEST_BATCH_SIZE = self.TRAIN_BATCH_SIZE
+        self.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION = 10
+        self.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS = 100
+        self.NUM_TRAIN_BATCHES_TO_EVALUATE = 1000
+        self.READER_NUM_PARALLEL_BATCHES = 6  # cpu cores [for tf.contrib.data.map_and_batch() in the reader]
+        self.SHUFFLE_BUFFER_SIZE = 10000
+        self.CSV_BUFFER_SIZE = 100 * 1024 * 1024  # 100 MB
+        self.MAX_TO_KEEP = 10
 
         # model hyper-params
-        config.MAX_CONTEXTS = 200
-        config.MAX_TOKEN_VOCAB_SIZE = 1301136
-        config.MAX_TARGET_VOCAB_SIZE = 261245
-        config.MAX_PATH_VOCAB_SIZE = 911417
-        config.DEFAULT_EMBEDDINGS_SIZE = 128
-        config.TOKEN_EMBEDDINGS_SIZE = config.DEFAULT_EMBEDDINGS_SIZE
-        config.PATH_EMBEDDINGS_SIZE = config.DEFAULT_EMBEDDINGS_SIZE
-        config.CODE_VECTOR_SIZE = config.context_vector_size
-        config.TARGET_EMBEDDINGS_SIZE = config.CODE_VECTOR_SIZE
-        config.MAX_TO_KEEP = 10
-        config.DROPOUT_KEEP_RATE = 0.75
+        self.MAX_CONTEXTS = 200
+        self.MAX_TOKEN_VOCAB_SIZE = 1301136
+        self.MAX_TARGET_VOCAB_SIZE = 261245
+        self.MAX_PATH_VOCAB_SIZE = 911417
+        self.DEFAULT_EMBEDDINGS_SIZE = 128
+        self.TOKEN_EMBEDDINGS_SIZE = self.DEFAULT_EMBEDDINGS_SIZE
+        self.PATH_EMBEDDINGS_SIZE = self.DEFAULT_EMBEDDINGS_SIZE
+        self.CODE_VECTOR_SIZE = self.context_vector_size
+        self.TARGET_EMBEDDINGS_SIZE = self.CODE_VECTOR_SIZE
+        self.DROPOUT_KEEP_RATE = 0.75
 
+    def load_from_args(self):
+        args = self.arguments_parser().parse_args()
         # Automatically filled, do not edit:
-        config.TRAIN_DATA_PATH_PREFIX = args.data_path
-        config.TEST_DATA_PATH = args.test_path
-        config.MODEL_SAVE_PATH = args.save_path
-        config.MODEL_LOAD_PATH = args.load_path
-        config.RELEASE = args.release
-        config.EXPORT_CODE_VECTORS = args.export_code_vectors
-        config.VERBOSE_MODE = args.verbose_mode
-        config.LOGS_PATH = args.logs_path
-        config.DL_FRAMEWORK = 'tensorflow' if not args.dl_framework else args.dl_framework
-        config.USE_TENSORBOARD = args.use_tensorboard
+        self.PREDICT = args.predict
+        self.MODEL_SAVE_PATH = args.save_path
+        self.MODEL_LOAD_PATH = args.load_path
+        self.TRAIN_DATA_PATH_PREFIX = args.data_path
+        self.TEST_DATA_PATH = args.test_path
+        self.RELEASE = args.release
+        self.EXPORT_CODE_VECTORS = args.export_code_vectors
+        self.SAVE_W2V = args.save_w2v
+        self.SAVE_T2V = args.save_t2v
+        self.VERBOSE_MODE = args.verbose_mode
+        self.LOGS_PATH = args.logs_path
+        self.DL_FRAMEWORK = 'tensorflow' if not args.dl_framework else args.dl_framework
+        self.USE_TENSORBOARD = args.use_tensorboard
 
-        return config
-
-    def __init__(self):
+    def __init__(self, set_defaults: bool = False, load_from_args: bool = False, verify: bool = False):
         self.NUM_TRAIN_EPOCHS: int = 0
         self.SAVE_EVERY_EPOCHS: int = 0
         self.TRAIN_BATCH_SIZE: int = 0
         self.TEST_BATCH_SIZE: int = 0
         self.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION: int = 0
-        self.NUM_BATCHES_TO_LOG: int = 0
+        self.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS: int = 0   # TODO: update README;
+        self.NUM_TRAIN_BATCHES_TO_EVALUATE: int = 0   # TODO: update README; update tensorflow_model to use it
         self.READER_NUM_PARALLEL_BATCHES: int = 0
         self.SHUFFLE_BUFFER_SIZE: int = 0
         self.CSV_BUFFER_SIZE: int = 0
+        self.MAX_TO_KEEP: int = 0
 
         # model hyper-params
         self.MAX_CONTEXTS: int = 0
@@ -64,16 +106,18 @@ class Config:
         self.PATH_EMBEDDINGS_SIZE: int = 0
         self.CODE_VECTOR_SIZE: int = 0
         self.TARGET_EMBEDDINGS_SIZE: int = 0
-        self.MAX_TO_KEEP: int = 0
         self.DROPOUT_KEEP_RATE: float = 0
 
         # Automatically filled by `args`.
+        self.PREDICT: bool = False   # TODO: update README;
         self.MODEL_SAVE_PATH: str = ''
         self.MODEL_LOAD_PATH: str = ''
         self.TRAIN_DATA_PATH_PREFIX: str = ''
         self.TEST_DATA_PATH: str = ''
         self.RELEASE: bool = False
         self.EXPORT_CODE_VECTORS: bool = False
+        self.SAVE_W2V: Optional[str] = None   # TODO: update README;
+        self.SAVE_T2V: Optional[str] = None   # TODO: update README;
         self.VERBOSE_MODE: int = 0
         self.LOGS_PATH: str = ''
         self.DL_FRAMEWORK: str = ''  # in {'keras', 'tensorflow'}
@@ -82,6 +126,15 @@ class Config:
         # Automatically filled by `Code2VecModelBase._init_num_of_examples()`.
         self.NUM_TRAIN_EXAMPLES: int = 0
         self.NUM_TEST_EXAMPLES: int = 0
+
+        self.__logger: Optional[logging.Logger] = None
+
+        if set_defaults:
+            self.set_defaults()
+        if load_from_args:
+            self.load_from_args()
+        if verify:
+            self.verify()
 
     @property
     def context_vector_size(self) -> int:
@@ -106,7 +159,7 @@ class Config:
         return ceil(self.NUM_TRAIN_EXAMPLES / self.TRAIN_BATCH_SIZE) if self.TRAIN_BATCH_SIZE else 0
 
     @property
-    def test_steps_per_epoch(self) -> int:
+    def test_steps(self) -> int:
         return ceil(self.NUM_TEST_EXAMPLES / self.TEST_BATCH_SIZE) if self.TEST_BATCH_SIZE else 0
 
     def data_path(self, is_evaluating: bool = False):
@@ -155,15 +208,46 @@ class Config:
     def verify(self):
         if not self.is_training and not self.is_loading:
             raise ValueError("Must train or load a model.")
+        if self.DL_FRAMEWORK not in {'tensorflow', 'keras'}:
+            raise ValueError("config.DL_FRAMEWORK must be in {'tensorflow', 'keras'}.")
 
     def __iter__(self):
         for attr_name in dir(self):
             if attr_name.startswith("__"):
                 continue
             try:
-                attr_value = getattr(self, attr_name)
+                attr_value = getattr(self, attr_name, None)
             except:
                 attr_value = None
             if callable(attr_value):
                 continue
             yield attr_name, attr_value
+
+    def get_logger(self) -> logging.Logger:
+        if self.__logger is None:
+            self.__logger = logging.getLogger('code2vec')
+            self.__logger.setLevel(logging.INFO)
+            old_handlers = list(self.__logger.handlers)
+            for handler in old_handlers:
+                self.__logger.removeHandler(handler)
+            ch = logging.StreamHandler()
+            ch.setLevel(logging.INFO)
+            formatter = logging.Formatter('%(asctime)s %(levelname)-8s %(message)s')
+            ch.setFormatter(formatter)
+            self.__logger.addHandler(ch)
+            if self.LOGS_PATH:
+                # logging.basicConfig(
+                #     filename=self.LOGS_PATH,
+                #     level=logging.INFO,
+                #     format='%(asctime)s %(levelname)-8s %(message)s',
+                #     datefmt='%Y-%m-%d %H:%M:%S'
+                # )
+                fh = logging.FileHandler(self.LOGS_PATH)
+                fh.setLevel(logging.INFO)
+                fh.setFormatter(formatter)
+                self.__logger.addHandler(fh)
+
+        return self.__logger
+
+    def log(self, msg):
+        self.get_logger().info(msg)

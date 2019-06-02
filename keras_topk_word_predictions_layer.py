@@ -1,7 +1,7 @@
 import tensorflow as tf
-from tensorflow.python import keras
-from tensorflow.python.keras.layers import Layer
-import tensorflow.python.keras.backend as K
+from tensorflow import keras
+from tensorflow.keras.layers import Layer
+import tensorflow.keras.backend as K
 from collections import namedtuple
 
 
@@ -11,7 +11,7 @@ TopKWordPredictionsLayerResult = namedtuple('TopKWordPredictionsLayerResult', ['
 class TopKWordPredictionsLayer(Layer):
     def __init__(self,
                  top_k: int,
-                 index_to_word_table: tf.contrib.lookup.HashTable,
+                 index_to_word_table: tf.lookup.StaticHashTable,
                  **kwargs):
         kwargs['dtype'] = tf.string
         kwargs['trainable'] = False

@@ -48,7 +48,7 @@ class _TFEvaluateModelInputTensorsFormer(ModelInputTensorsFormer):
 
 class Code2VecModel(Code2VecModelBase):
     def __init__(self, config: Config):
-        self.sess = tf.Session()
+        self.sess = tf.compat.v1.Session()
         self.saver = None
 
         self.eval_reader = None
@@ -85,7 +85,7 @@ class Code2VecModel(Code2VecModelBase):
         input_tensors = input_iterator.get_next()
 
         optimizer, train_loss = self._build_tf_training_graph(input_tensors)
-        self.saver = tf.train.Saver(max_to_keep=self.config.MAX_TO_KEEP)
+        self.saver = tf.compat.v1.train.Saver(max_to_keep=self.config.MAX_TO_KEEP)
 
         self._initialize_session_variables()
 
@@ -105,7 +105,7 @@ class Code2VecModel(Code2VecModelBase):
                 _, batch_loss = self.sess.run([optimizer, train_loss])
 
                 sum_loss += batch_loss
-                if batch_num % self.config.NUM_BATCHES_TO_LOG == 0:
+                if batch_num % self.config.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS == 0:
                     self._trace_training(sum_loss, batch_num, multi_batch_start_time)
                     print('Number of waiting examples in queue: %d' % self.sess.run(
                         "shuffle_batch/random_shuffle_queue_Size:0"))
@@ -147,7 +147,7 @@ class Code2VecModel(Code2VecModelBase):
 
             self.eval_top_words_op, self.eval_top_values_op, self.eval_original_names_op, _, _, _, _, \
                 self.eval_code_vectors = self._build_tf_test_graph(input_tensors)
-            self.saver = tf.train.Saver()
+            self.saver = tf.compat.v1.train.Saver()
 
         if self.config.MODEL_LOAD_PATH and not self.config.TRAIN_DATA_PATH_PREFIX:
             self._initialize_session_variables()
@@ -194,7 +194,7 @@ class Code2VecModel(Code2VecModelBase):
                     total_prediction_batches += 1
                     if self.config.EXPORT_CODE_VECTORS:
                         self._write_code_vectors(code_vectors_file, code_vectors)
-                    if total_prediction_batches % self.config.NUM_BATCHES_TO_LOG == 0:
+                    if total_prediction_batches % self.config.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS == 0:
                         elapsed = time.time() - start_time
                         # start_time = time.time()
                         self._trace_evaluation(total_predictions, elapsed)
@@ -221,34 +221,34 @@ class Code2VecModel(Code2VecModelBase):
         #   input_tensors.path_source_token_indices, input_tensors.path_indices,
         #   input_tensors.path_target_token_indices, input_tensors.context_valid_mask
 
-        with tf.variable_scope('model'):
-            tokens_vocab = tf.get_variable(
+        with tf.compat.v1.variable_scope('model'):
+            tokens_vocab = tf.compat.v1.get_variable(
                 self.vocab_type_to_tf_variable_name_mapping[VocabType.Token],
                 shape=(self.vocabs.token_vocab.size, self.config.TOKEN_EMBEDDINGS_SIZE), dtype=tf.float32,
-                initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, mode='FAN_OUT', uniform=True))
-            targets_vocab = tf.get_variable(
+                initializer=tf.initializers.variance_scaling_initializer(factor=1.0, mode='FAN_OUT', uniform=True))
+            targets_vocab = tf.compat.v1.get_variable(
                 self.vocab_type_to_tf_variable_name_mapping[VocabType.Target],
                 shape=(self.vocabs.target_vocab.size, self.config.TARGET_EMBEDDINGS_SIZE), dtype=tf.float32,
-                initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, mode='FAN_OUT', uniform=True))
-            attention_param = tf.get_variable(
+                initializer=tf.initializers.variance_scaling_initializer(factor=1.0, mode='FAN_OUT', uniform=True))
+            attention_param = tf.compat.v1.get_variable(
                 'ATTENTION',
                 shape=(self.config.CODE_VECTOR_SIZE, 1), dtype=tf.float32)
-            paths_vocab = tf.get_variable(
+            paths_vocab = tf.compat.v1.get_variable(
                 self.vocab_type_to_tf_variable_name_mapping[VocabType.Path],
                 shape=(self.vocabs.path_vocab.size, self.config.PATH_EMBEDDINGS_SIZE), dtype=tf.float32,
-                initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, mode='FAN_OUT', uniform=True))
+                initializer=tf.initializers.variance_scaling_initializer(factor=1.0, mode='FAN_OUT', uniform=True))
 
             code_vectors, _ = self._calculate_weighted_contexts(
                 tokens_vocab, paths_vocab, attention_param, input_tensors.path_source_token_indices,
                 input_tensors.path_indices, input_tensors.path_target_token_indices, input_tensors.context_valid_mask)
 
             logits = tf.matmul(code_vectors, targets_vocab, transpose_b=True)
-            batch_size = tf.to_float(tf.shape(input_tensors.target_index)[0])
+            batch_size = tf.cast(tf.shape(input_tensors.target_index)[0], dtype=tf.float32)
             loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=tf.reshape(input_tensors.target_index, [-1]),
                 logits=logits)) / batch_size
 
-            optimizer = tf.train.AdamOptimizer().minimize(loss)
+            optimizer = tf.compat.v1.train.AdamOptimizer().minimize(loss)
 
         return optimizer, loss
 
@@ -265,7 +265,7 @@ class Code2VecModel(Code2VecModelBase):
             context_embed = tf.nn.dropout(context_embed, self.config.DROPOUT_KEEP_RATE)
 
         flat_embed = tf.reshape(context_embed, [-1, self.config.context_vector_size])  # (batch * max_contexts, dim * 3)
-        transform_param = tf.get_variable(
+        transform_param = tf.compat.v1.get_variable(
             'TRANSFORM', shape=(self.config.context_vector_size, self.config.CODE_VECTOR_SIZE), dtype=tf.float32)
 
         flat_embed = tf.tanh(tf.matmul(flat_embed, transform_param))  # (batch * max_contexts, dim * 3)
@@ -273,7 +273,7 @@ class Code2VecModel(Code2VecModelBase):
         contexts_weights = tf.matmul(flat_embed, attention_param)  # (batch * max_contexts, 1)
         batched_contexts_weights = tf.reshape(
             contexts_weights, [-1, self.config.MAX_CONTEXTS, 1])  # (batch, max_contexts, 1)
-        mask = tf.log(valid_mask)  # (batch, max_contexts)
+        mask = tf.math.log(valid_mask)  # (batch, max_contexts)
         mask = tf.expand_dims(mask, axis=2)  # (batch, max_contexts, 1)
         batched_contexts_weights += mask  # (batch, max_contexts, 1)
         attention_weights = tf.nn.softmax(batched_contexts_weights, axis=1)  # (batch, max_contexts, 1)
@@ -284,19 +284,19 @@ class Code2VecModel(Code2VecModelBase):
         return code_vectors, attention_weights
 
     def _build_tf_test_graph(self, input_tensors, normalize_scores=False):
-        with tf.variable_scope('model', reuse=self.get_should_reuse_variables()):
-            tokens_vocab = tf.get_variable(
+        with tf.compat.v1.variable_scope('model', reuse=self.get_should_reuse_variables()):
+            tokens_vocab = tf.compat.v1.get_variable(
                 self.vocab_type_to_tf_variable_name_mapping[VocabType.Token],
                 shape=(self.vocabs.token_vocab.size, self.config.TOKEN_EMBEDDINGS_SIZE),
                 dtype=tf.float32, trainable=False)
-            targets_vocab = tf.get_variable(
+            targets_vocab = tf.compat.v1.get_variable(
                 self.vocab_type_to_tf_variable_name_mapping[VocabType.Target],
                 shape=(self.vocabs.target_vocab.size, self.config.TARGET_EMBEDDINGS_SIZE),
                 dtype=tf.float32, trainable=False)
-            attention_param = tf.get_variable(
+            attention_param = tf.compat.v1.get_variable(
                 'ATTENTION', shape=(self.config.context_vector_size, 1),
                 dtype=tf.float32, trainable=False)
-            paths_vocab = tf.get_variable(
+            paths_vocab = tf.compat.v1.get_variable(
                 self.vocab_type_to_tf_variable_name_mapping[VocabType.Path],
                 shape=(self.vocabs.path_vocab.size, self.config.PATH_EMBEDDINGS_SIZE),
                 dtype=tf.float32, trainable=False)
@@ -332,7 +332,7 @@ class Code2VecModel(Code2VecModelBase):
             self.predict_reader = PathContextReader(vocabs=self.vocabs,
                                                     model_input_tensors_former=_TFEvaluateModelInputTensorsFormer(),
                                                     config=self.config, estimator_action=EstimatorAction.Predict)
-            self.predict_placeholder = tf.placeholder(tf.string)
+            self.predict_placeholder = tf.compat.v1.placeholder(tf.string)
             reader_output = self.predict_reader.process_input_from_row_placeholder(self.predict_placeholder)
 
             self.predict_top_words_op, self.predict_top_values_op, self.predict_original_names_op, \
@@ -341,7 +341,7 @@ class Code2VecModel(Code2VecModelBase):
                 self._build_tf_test_graph(reader_output, normalize_scores=True)
 
             self._initialize_session_variables()
-            self.saver = tf.train.Saver()
+            self.saver = tf.compat.v1.train.Saver()
             self._load_inner_model(sess=self.sess)
 
         prediction_results: List[ModelPredictionResults] = []
@@ -398,9 +398,9 @@ class Code2VecModel(Code2VecModelBase):
     def _get_vocab_embedding_as_np_array(self, vocab_type: VocabType) -> np.ndarray:
         assert vocab_type in VocabType
         vocab_tf_variable_name = self.vocab_type_to_tf_variable_name_mapping[vocab_type]
-        with tf.variable_scope('model', reuse=None):
-            embeddings = tf.get_variable(vocab_tf_variable_name)
-            self.saver = tf.train.Saver()
+        with tf.compat.v1.variable_scope('model', reuse=None):
+            embeddings = tf.compat.v1.get_variable(vocab_tf_variable_name)
+            self.saver = tf.compat.v1.train.Saver()
             self._load_inner_model(self.sess)
             vocab_embedding_matrix = self.sess.run(embeddings)
             return vocab_embedding_matrix
@@ -425,8 +425,8 @@ class Code2VecModel(Code2VecModelBase):
 
     def _trace_training(self, sum_loss, batch_num, multi_batch_start_time):
         multi_batch_elapsed = time.time() - multi_batch_start_time
-        avg_loss = sum_loss / (self.config.NUM_BATCHES_TO_LOG * self.config.TRAIN_BATCH_SIZE)
-        throughput = self.config.TRAIN_BATCH_SIZE * self.config.NUM_BATCHES_TO_LOG / \
+        avg_loss = sum_loss / (self.config.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS * self.config.TRAIN_BATCH_SIZE)
+        throughput = self.config.TRAIN_BATCH_SIZE * self.config.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS / \
                      (multi_batch_elapsed if multi_batch_elapsed > 0 else 1)
         print('Average loss at batch %d: %f, \tthroughput: %d samples/sec' % (
             batch_num, avg_loss, throughput))
@@ -444,7 +444,9 @@ class Code2VecModel(Code2VecModelBase):
 
     def _initialize_session_variables(self):
         self.sess.run(tf.group(
-            tf.global_variables_initializer(), tf.local_variables_initializer(), tf.tables_initializer()))
+            tf.compat.v1.global_variables_initializer(),
+            tf.compat.v1.local_variables_initializer(),
+            tf.compat.v1.tables_initializer()))
         print('Initalized variables')
 
 

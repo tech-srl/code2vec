@@ -39,12 +39,11 @@ class Code2VecModelBase(abc.ABC):
         self.config = config
         self.config.verify()
 
-        self._init_logger()
         self._log_creating_model()
 
         self._init_num_of_examples()
         self._log_model_configuration()
-        self.vocabs = Code2VecVocabs.load_or_create(config)
+        self.vocabs = Code2VecVocabs(config)
         self.vocabs.target_vocab.get_index_to_word_lookup_table()  # just to initialize it (if not already initialized)
         self._load_or_create_inner_model()
         self._initialize()
@@ -67,19 +66,11 @@ class Code2VecModelBase(abc.ABC):
                 name=param_name, val=param_val, name_len=longest_param_name_len+2))
         self.log('---------------------------------------------------------------------')
 
-    def _init_logger(self):
-        import logging
-        if self.config.LOGS_PATH:
-            logging.basicConfig(
-                filename=self.config.LOGS_PATH,
-                level=logging.INFO,
-                format='%(asctime)s %(levelname)-8s %(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S'
-            )
-        self.logger = logging.getLogger()
+    @property
+    def logger(self):
+        return self.config.get_logger()
 
     def log(self, msg):
-        print(msg)
         self.logger.info(msg)
 
     def _init_num_of_examples(self):
@@ -104,7 +95,7 @@ class Code2VecModelBase(abc.ABC):
         return num_examples_in_dataset
 
     def load_or_build(self):
-        self.vocabs = Code2VecVocabs.load_or_create(self.config)
+        self.vocabs = Code2VecVocabs(self.config)
         self._load_or_create_inner_model()
 
     def save(self, model_save_path=None):

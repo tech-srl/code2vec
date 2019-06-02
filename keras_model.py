@@ -1,9 +1,8 @@
 import tensorflow as tf
-from tensorflow.python import keras
-from tensorflow.python.keras.layers import Input, Embedding, Concatenate, Dropout, TimeDistributed, Dense
-import tensorflow.python.keras.backend as K
-from tensorflow.python.keras.callbacks import Callback
-from tensorflow.python.keras.metrics import sparse_top_k_categorical_accuracy
+from tensorflow import keras
+from tensorflow.keras.layers import Input, Embedding, Concatenate, Dropout, TimeDistributed, Dense
+import tensorflow.keras.backend as K
+from tensorflow.keras.metrics import sparse_top_k_categorical_accuracy
 
 from path_context_reader import PathContextReader, ModelInputTensorsFormer, ReaderInputTensors, EstimatorAction
 import os
@@ -20,56 +19,45 @@ from keras_words_subtoken_metrics import WordsSubtokenPrecisionMetric, WordsSubt
 from config import Config
 from common import common
 from model_base import Code2VecModelBase, ModelEvaluationResults, ModelPredictionResults
-from keras_checkpoint_saver_callback import ModelTrainingStatus, ModelCheckpointSaverCallback
+from keras_checkpoint_saver_callback import ModelTrainingStatus, ModelTrainingStatusTrackerCallback,\
+    ModelCheckpointSaverCallback, MultiBatchCallback, ModelTrainingProgressLoggerCallback
 
 
-class ModelEvaluateCallback(Callback):
+class ModelEvaluationCallback(MultiBatchCallback):
     def __init__(self, code2vec_model: 'Code2VecModel'):
         self.code2vec_model = code2vec_model
-        self.multi_batch_start_time: int = 0
-        super(ModelEvaluateCallback, self).__init__()
-
-    def on_train_begin(self, logs=None):
-        self.log('Starting training...')
-
-    def on_epoch_begin(self, epoch, logs=None):
-        self.multi_batch_start_time = time.time()
+        self.avg_eval_duration: Optional[int] = None
+        super(ModelEvaluationCallback, self).__init__(self.code2vec_model.config.NUM_TRAIN_BATCHES_TO_EVALUATE)
 
     def on_epoch_end(self, epoch, logs=None):
-        self.log('Completed epoch #{}: {}'.format(epoch + 1, logs))
+        self.perform_evaluation()
 
-    def on_batch_end(self, batch, logs=None):
-        if (batch + 1) % self.code2vec_model.config.NUM_BATCHES_TO_LOG == 0:
-            self.on_multi_batch_end(batch, logs)
+    def on_multi_batch_end(self, batch, logs, multi_batch_elapsed):
+        self.perform_evaluation()
 
-    def on_multi_batch_end(self, batch, logs=None):
-        multi_batch_elapsed = time.time() - self.multi_batch_start_time
-        nr_samples_in_multi_batch = self.code2vec_model.config.TRAIN_BATCH_SIZE * \
-                                    self.code2vec_model.config.NUM_BATCHES_TO_LOG
-        throughput = nr_samples_in_multi_batch / multi_batch_elapsed
-        remained_batches = self.code2vec_model.config.train_steps_per_epoch - (batch + 1)
-        remained_samples = remained_batches * self.code2vec_model.config.TRAIN_BATCH_SIZE
-        remained_time_sec = remained_samples / throughput
-        loss = logs['loss']
-        logs_as_list = list(logs.values())
-        top_k_acc = logs_as_list[5:5+self.code2vec_model.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION]
-        f1, recall, precision = logs_as_list[-1], logs_as_list[-2], logs_as_list[-3]
-        self.code2vec_model.log(
-            'During epoch #{epoch} batch {batch}/{tot_batches} ({batch_precision}%) -- '
-            'throughput (#samples/sec): {throughput} -- ETA: {ETA}'.format(
-                epoch=self.code2vec_model.training_status.nr_epochs_trained + 1,
-                batch=batch + 1,
-                batch_precision=int(((batch + 1) / self.code2vec_model.config.train_steps_per_epoch) * 100),
-                tot_batches=self.code2vec_model.config.train_steps_per_epoch,
-                throughput=int(throughput),
-                ETA=str(datetime.timedelta(seconds=int(remained_time_sec)))))
+    def perform_evaluation(self):
+        if self.avg_eval_duration is None:
+            self.code2vec_model.log('Evaluating...')
+        else:
+            self.code2vec_model.log('Evaluating... (takes ~{})'.format(
+                str(datetime.timedelta(seconds=int(self.avg_eval_duration)))))
+        eval_start_time = time.time()
+        evaluation_results = self.code2vec_model.evaluate()
+        eval_duration = time.time() - eval_start_time
+        if self.avg_eval_duration is None:
+            self.avg_eval_duration = eval_duration
+        else:
+            self.avg_eval_duration = eval_duration * 0.5 + self.avg_eval_duration * 0.5
+        self.code2vec_model.log('Done evaluating (took {}). Evaluation results:'.format(
+            str(datetime.timedelta(seconds=int(eval_duration)))))
+
         self.code2vec_model.log(
             '    loss: {loss:.4f}, f1: {f1:.4f}, recall: {recall:.4f}, precision: {precision:.4f}'.format(
-                loss=loss, f1=f1, recall=recall, precision=precision))
-        top_k_acc_formated = ['top{}: {:.4f}'.format(i, acc) for i, acc in enumerate(top_k_acc, start=1)]
+                loss=evaluation_results.loss, f1=evaluation_results.subtoken_f1,
+                recall=evaluation_results.subtoken_recall, precision=evaluation_results.subtoken_precision))
+        top_k_acc_formated = ['top{}: {:.4f}'.format(i, acc) for i, acc in enumerate(evaluation_results.topk_acc, start=1)]
         for top_k_acc_chunk in common.chunks(top_k_acc_formated, 5):
             self.code2vec_model.log('    ' + (', '.join(top_k_acc_chunk)))
-        self.multi_batch_start_time = time.time()
 
 
 class _KerasModelInputTensorsFormer(ModelInputTensorsFormer):
@@ -79,7 +67,10 @@ class _KerasModelInputTensorsFormer(ModelInputTensorsFormer):
     def to_model_input_form(self, input_tensors: ReaderInputTensors):
         inputs = (input_tensors.path_source_token_indices, input_tensors.path_indices,
                   input_tensors.path_target_token_indices, input_tensors.context_valid_mask)
-        targets = {'target_index': input_tensors.target_index, 'target_string': input_tensors.target_string}
+        if self.estimator_action.is_train:
+            targets = input_tensors.target_index
+        else:
+            targets = {'target_index': input_tensors.target_index, 'target_string': input_tensors.target_string}
         if self.estimator_action.is_predict:
             inputs += (input_tensors.path_source_token_strings, input_tensors.path_strings,
                        input_tensors.path_target_token_strings)
@@ -92,8 +83,8 @@ class _KerasModelInputTensorsFormer(ModelInputTensorsFormer):
             path_indices=inputs[1],
             path_target_token_indices=inputs[2],
             context_valid_mask=inputs[3],
-            target_index=targets['target_index'],
-            target_string=targets['target_string'],
+            target_index=targets if self.estimator_action.is_train else targets['target_index'],
+            target_string=targets['target_string'] if self.estimator_action.is_evaluate else None,
             path_source_token_strings=inputs[4] if self.estimator_action.is_predict else None,
             path_strings=inputs[5] if self.estimator_action.is_predict else None,
             path_target_token_strings=inputs[6] if self.estimator_action.is_predict else None
@@ -107,7 +98,8 @@ KerasPredictionModelOutput = namedtuple(
 
 class Code2VecModel(Code2VecModelBase):
     def __init__(self, config: Config):
-        self.keras_model: Optional[keras.Model] = None
+        self.keras_train_model: Optional[keras.Model] = None
+        self.keras_eval_model: Optional[keras.Model] = None
         self.keras_model_predict_function: Optional[K.GraphExecutionFunction] = None
         self.training_status: ModelTrainingStatus = ModelTrainingStatus()
         self._checkpoint: Optional[tf.train.Checkpoint] = None
@@ -143,7 +135,7 @@ class Code2VecModel(Code2VecModelBase):
 
         # The final code vectors are received by applying attention to the "densed" context vectors.
         code_vectors, attention_weights = AttentionLayer(name='attention')(
-            context_after_dense, mask=context_valid_mask)
+            [context_after_dense, context_valid_mask])
 
         # "Decode": Now we use another dense layer to get the target word embedding from each code vector.
         target_index = Dense(
@@ -158,7 +150,8 @@ class Code2VecModel(Code2VecModelBase):
 
         # Wrap the layers into a Keras model, using our subtoken-metrics and the CE loss.
         inputs = [path_source_token_input, path_input, path_target_token_input, context_valid_mask]
-        self.keras_model = keras.Model(inputs=inputs, outputs=[target_index, topk_predicted_words])
+        self.keras_eval_model = keras.Model(inputs=inputs, outputs=[target_index, topk_predicted_words])
+        self.keras_train_model = keras.Model(inputs=inputs, outputs=target_index)
 
         # We use another dedicated Keras function to produce predictions.
         # It have additional outputs than the original model.
@@ -188,18 +181,22 @@ class Code2VecModel(Code2VecModelBase):
 
     @classmethod
     def _create_optimizer(cls):
-        return tf.train.AdamOptimizer()
+        return tf.optimizers.Adam()
 
     def _compile_keras_model(self, optimizer=None):
         if optimizer is None:
-            optimizer = self.keras_model.optimizer
+            optimizer = self.keras_train_model.optimizer
             if optimizer is None:
                 optimizer = self._create_optimizer()
 
         def zero_loss(true_word, topk_predictions):
             return tf.constant(0.0, shape=(), dtype=tf.float32)
 
-        self.keras_model.compile(
+        self.keras_train_model.compile(
+            loss='sparse_categorical_crossentropy',
+            optimizer=optimizer)
+
+        self.keras_eval_model.compile(
             loss={'target_index': 'sparse_categorical_crossentropy', 'target_string': zero_loss},
             optimizer=optimizer,
             metrics=self._create_metrics_for_keras_model())
@@ -213,33 +210,30 @@ class Code2VecModel(Code2VecModelBase):
             repeat_endlessly=repeat_endlessly)
 
     def train(self):
-        # initialize the input pipeline readers
+        # initialize the input pipeline reader
         train_data_input_reader = self._create_data_reader(estimator_action=EstimatorAction.Train)
-        val_data_input_reader = self._create_data_reader(estimator_action=EstimatorAction.Evaluate,
-                                                         repeat_endlessly=True)
 
         # TODO: do we want to use early stopping? if so, use the right chechpoint manager and set the correct
         #       `monitor` quantity (example: monitor='val_acc', mode='max')
 
         keras_callbacks = [
-            ModelCheckpointSaverCallback(
-                self._get_checkpoint_manager(), self.training_status, self.config.SAVE_EVERY_EPOCHS),
-            ModelEvaluateCallback(self)
+            ModelTrainingStatusTrackerCallback(self.training_status),
+            ModelTrainingProgressLoggerCallback(self.config, self.training_status),
+            ModelCheckpointSaverCallback(self._get_checkpoint_manager(), self.config.SAVE_EVERY_EPOCHS, self.logger)
         ]
+        if self.config.is_testing:
+            keras_callbacks.append(ModelEvaluationCallback(self))
         if self.config.USE_TENSORBOARD:
             log_dir = "logs/scalars/train_" + common.now_str()
             tensorboard_callback = keras.callbacks.TensorBoard(
-                log_dir=log_dir, update_freq=self.config.NUM_BATCHES_TO_LOG * self.config.TRAIN_BATCH_SIZE)
+                log_dir=log_dir, update_freq=self.config.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS * self.config.TRAIN_BATCH_SIZE)
             keras_callbacks.append(tensorboard_callback)
 
-        training_history = self.keras_model.fit(
+        training_history = self.keras_train_model.fit(
             train_data_input_reader.get_dataset(),
             steps_per_epoch=self.config.train_steps_per_epoch,
             epochs=self.config.NUM_TRAIN_EPOCHS,
             initial_epoch=self.training_status.nr_epochs_trained,
-            batch_size=self.config.TRAIN_BATCH_SIZE,
-            validation_data=val_data_input_reader.get_dataset(),
-            validation_steps=self.config.test_steps_per_epoch,
             verbose=self.config.VERBOSE_MODE,
             callbacks=keras_callbacks)
 
@@ -247,10 +241,10 @@ class Code2VecModel(Code2VecModelBase):
 
     def evaluate(self) -> Optional[ModelEvaluationResults]:
         val_data_input_reader = self._create_data_reader(estimator_action=EstimatorAction.Evaluate)
-        eval_res = self.keras_model.evaluate(
+        eval_res = self.keras_eval_model.evaluate(
             val_data_input_reader.get_dataset(),
-            batch_size=self.config.TEST_BATCH_SIZE,
-            steps=self.config.test_steps_per_epoch)
+            steps=self.config.test_steps,
+            verbose=self.config.VERBOSE_MODE)
         k = self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION
         return ModelEvaluationResults(
             topk_acc=eval_res[3:k+3],
@@ -298,7 +292,7 @@ class Code2VecModel(Code2VecModelBase):
 
     def _save_inner_model(self, path):
         if self.config.RELEASE:
-            self.keras_model.save_weights(self.config.get_model_weights_path(path))
+            self.keras_train_model.save_weights(self.config.get_model_weights_path(path))
         else:
             with K.get_session().as_default():
                 self._get_checkpoint_manager().save(checkpoint_number=self.training_status.nr_epochs_trained)
@@ -306,7 +300,7 @@ class Code2VecModel(Code2VecModelBase):
     def _create_inner_model(self):
         self._create_keras_model()
         self._compile_keras_model()
-        self.keras_model.summary()
+        self.keras_train_model.summary()
 
     def _load_inner_model(self):
         self._create_keras_model()
@@ -345,16 +339,17 @@ class Code2VecModel(Code2VecModelBase):
         else:
             # load the "released" model (only the weights).
             self.log('Loading model weights from path `{}`.'.format(self.config.model_weights_load_path))
-            self.keras_model.load_weights(self.config.model_weights_load_path)
+            self.keras_train_model.load_weights(self.config.model_weights_load_path)
 
-        self.keras_model.summary(print_fn=self.log)
+        self.keras_train_model.summary(print_fn=self.log)
 
     def _get_checkpoint(self):
-        assert self.keras_model is not None and self.keras_model.optimizer is not None
+        assert self.keras_train_model is not None and self.keras_train_model.optimizer is not None
         if self._checkpoint is None:
+            # TODO: we would like to save (& restore) the `nr_epochs_trained`.
             self._checkpoint = tf.train.Checkpoint(
-                #epoch_nr=tf.Variable(self.training_status.nr_epochs_trained),
-                optimizer=self.keras_model.optimizer, model=self.keras_model)
+                # nr_epochs_trained=tf.Variable(self.training_status.nr_epochs_trained, name='nr_epochs_trained'),
+                optimizer=self.keras_train_model.optimizer, model=self.keras_train_model)
         return self._checkpoint
 
     def _get_checkpoint_manager(self):
@@ -373,7 +368,7 @@ class Code2VecModel(Code2VecModelBase):
             VocabType.Path: 'path_embedding'
         }
         embedding_layer_name = vocab_type_to_embedding_layer_mapping[vocab_type]
-        weight = np.array(self.keras_model.get_layer(embedding_layer_name).get_weights()[0])
+        weight = np.array(self.keras_train_model.get_layer(embedding_layer_name).get_weights()[0])
         assert len(weight.shape) == 2
 
         # token, path have an actual `Embedding` layers, but target have just a `Dense` layer.
@@ -384,10 +379,9 @@ class Code2VecModel(Code2VecModelBase):
 
         return weight
 
-    def _initialize_tables(self):
+    def _create_lookup_tables(self):
         PathContextReader.create_needed_vocabs_lookup_tables(self.vocabs)
-        K.get_session().run(tf.tables_initializer())
-        self.log('Initalized tables')
+        self.log('Lookup tables created.')
 
     def _initialize(self):
-        self._initialize_tables()
+        self._create_lookup_tables()

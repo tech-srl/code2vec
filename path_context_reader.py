@@ -92,8 +92,8 @@ class PathContextReader:
                for name, tensor in tensors._asdict().items()})
         return self.model_input_tensors_former.to_model_input_form(tensors_expanded)
 
-    def process_and_iterate_input_from_data_lines(self, input_data_lines: Iterable, session: tf.Session) -> Iterable:
-        row_placeholder = tf.placeholder(tf.string)
+    def process_and_iterate_input_from_data_lines(self, input_data_lines: Iterable, session: tf.compat.v1.Session) -> Iterable:
+        row_placeholder = tf.compat.v1.placeholder(tf.string)
         reader_output = self.process_input_from_row_placeholder(row_placeholder)
         for data_row in input_data_lines:
             processed_row = session.run(reader_output, feed_dict={row_placeholder: data_row})

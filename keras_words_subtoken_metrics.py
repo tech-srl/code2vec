@@ -1,28 +1,26 @@
 import tensorflow as tf
-from tensorflow.python import keras
-from tensorflow.python.keras.metrics import Metric
-import tensorflow.python.keras.backend as K
-from tensorflow.python.keras.backend import init_ops, math_ops, control_flow_ops, state_ops
-from tensorflow.python.ops import string_ops
+import tensorflow.keras.backend as K
+
 import abc
 from typing import Optional, Callable, List
 from functools import reduce
+
 from common import common
 from vocabularies import SpecialVocabWords
 
 
-class WordsSubtokenMetricBase(Metric):
+class WordsSubtokenMetricBase(tf.metrics.Metric):
     FilterType = Callable[[tf.Tensor, tf.Tensor], tf.Tensor]
 
     def __init__(self,
-                 index_to_word_table: Optional[tf.contrib.lookup.HashTable] = None,
+                 index_to_word_table: Optional[tf.lookup.StaticHashTable] = None,
                  topk_predicted_words=None,
                  predicted_words_filters: Optional[List[FilterType]] = None,
                  subtokens_delimiter: str = '|', name=None, dtype=None):
         super(WordsSubtokenMetricBase, self).__init__(name=name, dtype=dtype)
-        self.tp = self.add_weight('true_positives', shape=(), initializer=init_ops.zeros_initializer)
-        self.fp = self.add_weight('false_positives', shape=(), initializer=init_ops.zeros_initializer)
-        self.fn = self.add_weight('false_negatives', shape=(), initializer=init_ops.zeros_initializer)
+        self.tp = self.add_weight('true_positives', shape=(), initializer=tf.zeros_initializer)
+        self.fp = self.add_weight('false_positives', shape=(), initializer=tf.zeros_initializer)
+        self.fn = self.add_weight('false_negatives', shape=(), initializer=tf.zeros_initializer)
         self.index_to_word_table = index_to_word_table
         self.topk_predicted_words = topk_predicted_words
         self.predicted_words_filters = predicted_words_filters
@@ -51,8 +49,8 @@ class WordsSubtokenMetricBase(Metric):
         true_target_word_string = tf.reshape(true_target_word_string, [-1])
 
         # We split each word into subtokens
-        true_target_subwords = string_ops.string_split(true_target_word_string, delimiter=self.subtokens_delimiter)
-        prediction_subwords = string_ops.string_split(predicted_word, delimiter=self.subtokens_delimiter)
+        true_target_subwords = tf.string_split(true_target_word_string, delimiter=self.subtokens_delimiter)
+        prediction_subwords = tf.string_split(predicted_word, delimiter=self.subtokens_delimiter)
         true_target_subwords = tf.sparse.to_dense(true_target_subwords, default_value=SpecialVocabWords.PAD)
         prediction_subwords = tf.sparse.to_dense(prediction_subwords, default_value=SpecialVocabWords.PAD)
         true_target_subwords_mask = tf.not_equal(true_target_subwords, SpecialVocabWords.PAD)
@@ -78,12 +76,9 @@ class WordsSubtokenMetricBase(Metric):
         batch_false_negative = tf.reduce_sum(tf.cast(
             tf.logical_and(~true_target_subwords__in__prediction_subwords, true_target_subwords_mask), tf.float32))
 
-        update_ops = [
-            state_ops.assign_add(self.tp, batch_true_positive),
-            state_ops.assign_add(self.fp, batch_false_positive),
-            state_ops.assign_add(self.fn, batch_false_negative)
-        ]
-        return control_flow_ops.group(update_ops)
+        self.tp.assign_add(batch_true_positive)
+        self.fp.assign_add(batch_false_positive)
+        self.fn.assign_add(batch_false_negative)
 
     def _get_prediction_from_topk(self, topk_predicted_words):
         # apply given filter
@@ -116,19 +111,19 @@ class WordsSubtokenMetricBase(Metric):
 
 class WordsSubtokenPrecisionMetric(WordsSubtokenMetricBase):
     def result(self):
-        precision = math_ops.div_no_nan(self.tp, self.tp + self.fp)
+        precision = tf.math.divide_no_nan(self.tp, self.tp + self.fp)
         return precision
 
 
 class WordsSubtokenRecallMetric(WordsSubtokenMetricBase):
     def result(self):
-        recall = math_ops.div_no_nan(self.tp, self.tp + self.fn)
+        recall = tf.math.divide_no_nan(self.tp, self.tp + self.fn)
         return recall
 
 
 class WordsSubtokenF1Metric(WordsSubtokenMetricBase):
     def result(self):
-        recall = math_ops.div_no_nan(self.tp, self.tp + self.fn)
-        precision = math_ops.div_no_nan(self.tp, self.tp + self.fp)
-        f1 = math_ops.div_no_nan(2 * precision * recall, precision + recall + K.epsilon())
+        recall = tf.math.divide_no_nan(self.tp, self.tp + self.fn)
+        precision = tf.math.divide_no_nan(self.tp, self.tp + self.fp)
+        f1 = tf.math.divide_no_nan(2 * precision * recall, precision + recall + K.epsilon())
         return f1
