@@ -1,6 +1,7 @@
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras.layers import Input, Embedding, Concatenate, Dropout, TimeDistributed, Dense
+from tensorflow.keras.callbacks import Callback
 import tensorflow.keras.backend as K
 from tensorflow.keras.metrics import sparse_top_k_categorical_accuracy
 
@@ -109,6 +110,7 @@ class _KerasModelInputTensorsFormer(ModelInputTensorsFormer):
         )
 
 
+"""Used for convenient-and-clear access to raw prediction result parts (by their names)."""
 KerasPredictionModelOutput = namedtuple(
     'KerasModelOutput', ['target_index', 'code_vectors', 'attention_weights',
                          'topk_predicted_words', 'topk_predicted_words_scores'])
@@ -159,6 +161,10 @@ class Code2VecModel(Code2VecModelBase):
         target_index = Dense(
             self.vocabs.target_vocab.size, use_bias=False, activation='softmax', name='target_index')(code_vectors)
 
+        # Wrap the layers into a Keras model, using our subtoken-metrics and the CE loss.
+        inputs = [path_source_token_input, path_input, path_target_token_input, context_valid_mask]
+        self.keras_train_model = keras.Model(inputs=inputs, outputs=target_index)
+
         # Actual target word predictions (as strings). Used as a second output layer.
         # Used for predict() and for the evaluation metrics calculations.
         topk_predicted_words, topk_predicted_words_scores = TopKWordPredictionsLayer(
@@ -166,10 +172,10 @@ class Code2VecModel(Code2VecModelBase):
             self.vocabs.target_vocab.get_index_to_word_lookup_table(),
             name='target_string')(target_index)
 
-        # Wrap the layers into a Keras model, using our subtoken-metrics and the CE loss.
-        inputs = [path_source_token_input, path_input, path_target_token_input, context_valid_mask]
+        # We use another dedicated Keras model for evaluation.
+        # The evaluation model outputs the `topk_predicted_words` as a 2nd output.
+        # The separation between train and eval models is for efficiency.
         self.keras_eval_model = keras.Model(inputs=inputs, outputs=[target_index, topk_predicted_words])
-        self.keras_train_model = keras.Model(inputs=inputs, outputs=target_index)
 
         # We use another dedicated Keras function to produce predictions.
         # It have additional outputs than the original model.
@@ -179,7 +185,7 @@ class Code2VecModel(Code2VecModelBase):
             topk_predicted_words=topk_predicted_words, topk_predicted_words_scores=topk_predicted_words_scores))
         self.keras_model_predict_function = K.function(inputs=inputs, outputs=predict_outputs)
 
-    def _create_metrics_for_keras_model(self) -> Dict[str, List[Union[Callable, keras.metrics.Metric]]]:
+    def _create_metrics_for_keras_eval_model(self) -> Dict[str, List[Union[Callable, keras.metrics.Metric]]]:
         top_k_acc_metrics = []
         for k in range(1, self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION + 1):
             top_k_acc_metric = partial(
@@ -217,7 +223,7 @@ class Code2VecModel(Code2VecModelBase):
         self.keras_eval_model.compile(
             loss={'target_index': 'sparse_categorical_crossentropy', 'target_string': zero_loss},
             optimizer=optimizer,
-            metrics=self._create_metrics_for_keras_model())
+            metrics=self._create_metrics_for_keras_eval_model())
 
     def _create_data_reader(self, estimator_action: EstimatorAction, repeat_endlessly: bool = False):
         return PathContextReader(
@@ -227,10 +233,7 @@ class Code2VecModel(Code2VecModelBase):
             estimator_action=estimator_action,
             repeat_endlessly=repeat_endlessly)
 
-    def train(self):
-        # initialize the input pipeline reader
-        train_data_input_reader = self._create_data_reader(estimator_action=EstimatorAction.Train)
-
+    def _create_train_callbacks(self) -> List[Callback]:
         # TODO: do we want to use early stopping? if so, use the right chechpoint manager and set the correct
         #       `monitor` quantity (example: monitor='val_acc', mode='max')
 
@@ -246,8 +249,14 @@ class Code2VecModel(Code2VecModelBase):
         if self.config.USE_TENSORBOARD:
             log_dir = "logs/scalars/train_" + common.now_str()
             tensorboard_callback = keras.callbacks.TensorBoard(
-                log_dir=log_dir, update_freq=self.config.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS * self.config.TRAIN_BATCH_SIZE)
+                log_dir=log_dir,
+                update_freq=self.config.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS * self.config.TRAIN_BATCH_SIZE)
             keras_callbacks.append(tensorboard_callback)
+        return keras_callbacks
+
+    def train(self):
+        # initialize the input pipeline reader
+        train_data_input_reader = self._create_data_reader(estimator_action=EstimatorAction.Train)
 
         training_history = self.keras_train_model.fit(
             train_data_input_reader.get_dataset(),
@@ -255,7 +264,7 @@ class Code2VecModel(Code2VecModelBase):
             epochs=self.config.NUM_TRAIN_EPOCHS,
             initial_epoch=self.training_status.nr_epochs_trained,
             verbose=self.config.VERBOSE_MODE,
-            callbacks=keras_callbacks)
+            callbacks=self._create_train_callbacks())
 
         self.log(training_history)
 
