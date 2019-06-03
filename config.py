@@ -48,7 +48,7 @@ class Config:
         self.TEST_BATCH_SIZE = self.TRAIN_BATCH_SIZE
         self.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION = 10
         self.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS = 100
-        self.NUM_TRAIN_BATCHES_TO_EVALUATE = 1000
+        self.NUM_TRAIN_BATCHES_TO_EVALUATE = 1800
         self.READER_NUM_PARALLEL_BATCHES = 6  # cpu cores [for tf.contrib.data.map_and_batch() in the reader]
         self.SHUFFLE_BUFFER_SIZE = 10000
         self.CSV_BUFFER_SIZE = 100 * 1024 * 1024  # 100 MB
@@ -243,9 +243,8 @@ class Config:
         if self.__logger is None:
             self.__logger = logging.getLogger('code2vec')
             self.__logger.setLevel(logging.INFO)
-            old_handlers = list(self.__logger.handlers)
-            for handler in old_handlers:
-                self.__logger.removeHandler(handler)
+            self.__logger.handlers = []
+            self.__logger.propagate = 0
             ch = logging.StreamHandler()
             ch.setLevel(logging.INFO)
             formatter = logging.Formatter('%(asctime)s %(levelname)-8s %(message)s')
