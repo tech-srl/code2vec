@@ -84,7 +84,7 @@ class _KerasModelInputTensorsFormer(ModelInputTensorsFormer):
             path_target_token_indices=inputs[2],
             context_valid_mask=inputs[3],
             target_index=targets if self.estimator_action.is_train else targets['target_index'],
-            target_string=targets['target_string'] if self.estimator_action.is_evaluate else None,
+            target_string=targets['target_string'] if not self.estimator_action.is_train else None,
             path_source_token_strings=inputs[4] if self.estimator_action.is_predict else None,
             path_strings=inputs[5] if self.estimator_action.is_predict else None,
             path_target_token_strings=inputs[6] if self.estimator_action.is_predict else None
@@ -219,8 +219,10 @@ class Code2VecModel(Code2VecModelBase):
         keras_callbacks = [
             ModelTrainingStatusTrackerCallback(self.training_status),
             ModelTrainingProgressLoggerCallback(self.config, self.training_status),
-            ModelCheckpointSaverCallback(self._get_checkpoint_manager(), self.config.SAVE_EVERY_EPOCHS, self.logger)
         ]
+        if self.config.is_saving:
+            keras_callbacks.append(ModelCheckpointSaverCallback(
+                self._get_checkpoint_manager(), self.config.SAVE_EVERY_EPOCHS, self.logger))
         if self.config.is_testing:
             keras_callbacks.append(ModelEvaluationCallback(self))
         if self.config.USE_TENSORBOARD:
@@ -256,8 +258,7 @@ class Code2VecModel(Code2VecModelBase):
 
     def predict(self, predict_data_rows: Iterable[str]) -> List[ModelPredictionResults]:
         predict_input_reader = self._create_data_reader(estimator_action=EstimatorAction.Predict)
-        input_iterator = predict_input_reader.process_and_iterate_input_from_data_lines(predict_data_rows,
-                                                                                        K.get_session())
+        input_iterator = predict_input_reader.process_and_iterate_input_from_data_lines(predict_data_rows)
         all_model_prediction_results = []
         for input_row in input_iterator:
             # perform the actual prediction and get raw results.
@@ -294,8 +295,7 @@ class Code2VecModel(Code2VecModelBase):
         if self.config.RELEASE:
             self.keras_train_model.save_weights(self.config.get_model_weights_path(path))
         else:
-            with K.get_session().as_default():
-                self._get_checkpoint_manager().save(checkpoint_number=self.training_status.nr_epochs_trained)
+            self._get_checkpoint_manager().save(checkpoint_number=self.training_status.nr_epochs_trained)
 
     def _create_inner_model(self):
         self._create_keras_model()
@@ -332,7 +332,7 @@ class Code2VecModel(Code2VecModelBase):
                 raise ValueError("Failed to load model: Model latest checkpoint is not found.")
             self.log('Loading latest checkpoint `{}`.'.format(latest_checkpoint))
             status = self._get_checkpoint().restore(latest_checkpoint)
-            status.initialize_or_restore(K.get_session())
+            status.initialize_or_restore()
             # FIXME: are we sure we have to re-compile here? I turned it off to save the optimizer state
             # self._compile_keras_model()  # We have to re-compile because we also recovered the `tf.train.AdamOptimizer`.
             self.training_status.nr_epochs_trained = int(latest_checkpoint.split('-')[-1])

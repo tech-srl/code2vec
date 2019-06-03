@@ -172,7 +172,7 @@ class common:
 
     @staticmethod
     def squeeze_single_batch_dimension_for_np_arrays(arrays):
-        assert all(array is None or isinstance(array, np.ndarray) for array in arrays)
+        assert all(array is None or isinstance(array, np.ndarray) or isinstance(array, tf.Tensor) for array in arrays)
         return tuple(
             None if array is None else np.squeeze(array, axis=0)
             for array in arrays
