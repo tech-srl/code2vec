@@ -146,7 +146,7 @@ class Code2VecModelBase(abc.ABC):
         ...
 
     def _load_or_create_inner_model(self):
-        if self.config.MODEL_LOAD_PATH:
+        if self.config.is_loading:
             self._load_inner_model()
         else:
             self._create_inner_model()
