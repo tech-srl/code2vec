@@ -24,6 +24,15 @@ from keras_checkpoint_saver_callback import ModelTrainingStatus, ModelTrainingSt
 
 
 class ModelEvaluationCallback(MultiBatchCallback):
+    """
+    This callback is passed to the `model.fit()` call.
+    It is responsible to trigger model evaluation during the training.
+    The reason we use a callback and not just passing validation data to `model.fit()` is because:
+        (i)   the training model is different than the evaluation model for efficiency considerations;
+        (ii)  we want to control the logging format;
+        (iii) we want the evaluation to occur once per 1K batches (rather than only once per epoch).
+    """
+
     def __init__(self, code2vec_model: 'Code2VecModel'):
         self.code2vec_model = code2vec_model
         self.avg_eval_duration: Optional[int] = None
@@ -61,6 +70,15 @@ class ModelEvaluationCallback(MultiBatchCallback):
 
 
 class _KerasModelInputTensorsFormer(ModelInputTensorsFormer):
+    """
+    An instance of this class is passed to the reader in order to help the reader to construct the input
+        in the form that the model expects to receive it.
+    This class also enables conveniently & clearly access input parts by their field names.
+        eg: 'tensors.path_indices' instead if 'tensors[1]'.
+    This allows the input tensors to be passed as pure tuples along the computation graph, while the
+        python functions that construct the graph can easily (and clearly) access tensors.
+    """
+
     def __init__(self, estimator_action: EstimatorAction):
         self.estimator_action = estimator_action
 

@@ -30,7 +30,9 @@ class EstimatorAction(Enum):
 
 
 class ReaderInputTensors(NamedTuple):
-    """Used mostly for convenient-and-clear access to input parts."""
+    """
+    Used mostly for convenient-and-clear access to input parts (by their names).
+    """
     path_source_token_indices: tf.Tensor
     path_indices: tf.Tensor
     path_target_token_indices: tf.Tensor
@@ -43,7 +45,16 @@ class ReaderInputTensors(NamedTuple):
 
 
 class ModelInputTensorsFormer(abc.ABC):
-    """Inherited by the model to set the wanted input parts and its form (as expected by the model input)."""
+    """
+    Should be inherited by the model implementation.
+    An instance of the inherited class is passed by the model to the reader in order to help the reader
+        to construct the input in the form that the model expects to receive it.
+    This class also enables conveniently & clearly access input parts by their field names.
+        eg: 'tensors.path_indices' instead if 'tensors[1]'.
+    This allows the input tensors to be passed as pure tuples along the computation graph, while the
+        python functions that construct the graph can easily (and clearly) access tensors.
+    """
+
     @abc.abstractmethod
     def to_model_input_form(self, input_tensors: ReaderInputTensors):
         ...
