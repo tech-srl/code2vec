@@ -243,7 +243,7 @@ class Code2VecModel(Code2VecModelBase):
         ]
         if self.config.is_saving:
             keras_callbacks.append(ModelCheckpointSaverCallback(
-                self._get_checkpoint_manager(), self.config.SAVE_EVERY_EPOCHS, self.logger))
+                self, self.config.SAVE_EVERY_EPOCHS, self.logger))
         if self.config.is_testing:
             keras_callbacks.append(ModelEvaluationCallback(self))
         if self.config.USE_TENSORBOARD:

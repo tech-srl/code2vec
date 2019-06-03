@@ -31,9 +31,12 @@ class ModelTrainingStatusTrackerCallback(Callback):
 
 
 class ModelCheckpointSaverCallback(Callback):
-    def __init__(self, checkpoint_manager: tf.train.CheckpointManager, nr_epochs_to_save: int = 1,
+    """
+    @model_wrapper should have a `.save()` method.
+    """
+    def __init__(self, model_wrapper, nr_epochs_to_save: int = 1,
                  logger: logging.Logger = None):
-        self.checkpoint_manager: tf.train.CheckpointManager = checkpoint_manager
+        self.model_wrapper = model_wrapper
         self.nr_epochs_to_save: int = nr_epochs_to_save
         self.logger = logger if logger is not None else logging.getLogger()
 
@@ -49,7 +52,7 @@ class ModelCheckpointSaverCallback(Callback):
         nr_non_saved_epochs = nr_epochs_trained - self.last_saved_epoch
         if nr_non_saved_epochs >= self.nr_epochs_to_save:
             self.logger.info('Saving model after {} epochs.'.format(nr_epochs_trained))
-            self.checkpoint_manager.save(checkpoint_number=nr_epochs_trained)
+            self.model_wrapper.save()
             self.logger.info('Done saving model.')
             self.last_saved_epoch = nr_epochs_trained
 
