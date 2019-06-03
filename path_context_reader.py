@@ -80,10 +80,11 @@ class PathContextReader:
         vocabs.path_vocab.get_word_to_index_lookup_table()
         vocabs.target_vocab.get_word_to_index_lookup_table()
 
-    def process_input_from_row_placeholder(self, row_placeholder):
+    @tf.function
+    def process_input_row(self, row_placeholder):
         parts = tf.io.decode_csv(
             row_placeholder, record_defaults=self.csv_record_defaults, field_delim=' ', use_quote_delim=False)
-        # TODO: apply the filter `_filter_input_rows()` here.
+        # Note: we DON'T apply the filter `_filter_input_rows()` here.
         tensors = self._map_raw_dataset_row_to_input_tensors(*parts)
 
         # make it batched (first batch axis is going to have dimension 1)
@@ -92,11 +93,9 @@ class PathContextReader:
                for name, tensor in tensors._asdict().items()})
         return self.model_input_tensors_former.to_model_input_form(tensors_expanded)
 
-    def process_and_iterate_input_from_data_lines(self, input_data_lines: Iterable, session: tf.compat.v1.Session) -> Iterable:
-        row_placeholder = tf.compat.v1.placeholder(tf.string)
-        reader_output = self.process_input_from_row_placeholder(row_placeholder)
+    def process_and_iterate_input_from_data_lines(self, input_data_lines: Iterable) -> Iterable:
         for data_row in input_data_lines:
-            processed_row = session.run(reader_output, feed_dict={row_placeholder: data_row})
+            processed_row = self.process_input_row(data_row)
             yield processed_row
 
     def get_dataset(self, input_data_rows: Optional = None) -> tf.data.Dataset:
