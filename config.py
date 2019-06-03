@@ -110,16 +110,16 @@ class Config:
 
         # Automatically filled by `args`.
         self.PREDICT: bool = False   # TODO: update README;
-        self.MODEL_SAVE_PATH: str = ''
-        self.MODEL_LOAD_PATH: str = ''
-        self.TRAIN_DATA_PATH_PREFIX: str = ''
-        self.TEST_DATA_PATH: str = ''
+        self.MODEL_SAVE_PATH: Optional[str] = None
+        self.MODEL_LOAD_PATH: Optional[str] = None
+        self.TRAIN_DATA_PATH_PREFIX: Optional[str] = None
+        self.TEST_DATA_PATH: Optional[str] = None
         self.RELEASE: bool = False
         self.EXPORT_CODE_VECTORS: bool = False
         self.SAVE_W2V: Optional[str] = None   # TODO: update README;
         self.SAVE_T2V: Optional[str] = None   # TODO: update README;
         self.VERBOSE_MODE: int = 0
-        self.LOGS_PATH: str = ''
+        self.LOGS_PATH: Optional[str] = None
         self.DL_FRAMEWORK: str = ''  # in {'keras', 'tensorflow'}
         self.USE_TENSORBOARD: bool = False
 
@@ -143,15 +143,19 @@ class Config:
         return self.PATH_EMBEDDINGS_SIZE + 2 * self.TOKEN_EMBEDDINGS_SIZE
 
     @property
-    def is_training(self):
+    def is_training(self) -> bool:
         return bool(self.TRAIN_DATA_PATH_PREFIX)
 
     @property
-    def is_loading(self):
+    def is_loading(self) -> bool:
         return bool(self.MODEL_LOAD_PATH)
 
     @property
-    def is_testing(self):
+    def is_saving(self) -> bool:
+        return bool(self.MODEL_SAVE_PATH)
+
+    @property
+    def is_testing(self) -> bool:
         return bool(self.TEST_DATA_PATH)
 
     @property
@@ -169,40 +173,52 @@ class Config:
         return self.TEST_BATCH_SIZE if is_evaluating else self.TRAIN_BATCH_SIZE  # take min with NUM_TRAIN_EXAMPLES?
 
     @property
-    def train_data_path(self):
+    def train_data_path(self) -> Optional[str]:
+        if not self.is_training:
+            return None
         return '{}.train.c2v'.format(self.TRAIN_DATA_PATH_PREFIX)
 
     @property
-    def word_freq_dict_path(self) -> str:
+    def word_freq_dict_path(self) -> Optional[str]:
+        if not self.is_training:
+            return None
         return '{}.dict.c2v'.format(self.TRAIN_DATA_PATH_PREFIX)
 
     @classmethod
-    def get_vocabularies_path_from_model_path(cls, model_file_path: str):
+    def get_vocabularies_path_from_model_path(cls, model_file_path: str) -> str:
         vocabularies_save_file_name = "vocabularies.bin"
         return '/'.join(model_file_path.split('/')[:-1] + [vocabularies_save_file_name])
 
     @classmethod
-    def get_entire_model_path(cls, model_path: str):
+    def get_entire_model_path(cls, model_path: str) -> str:
         return model_path + '__entire-model'
 
     @classmethod
-    def get_model_weights_path(cls, model_path: str):
+    def get_model_weights_path(cls, model_path: str) -> str:
         return model_path + '__only-weights'
 
     @property
-    def entire_model_load_path(self):
+    def entire_model_load_path(self) -> Optional[str]:
+        if not self.is_loading:
+            return None
         return self.get_entire_model_path(self.MODEL_LOAD_PATH)
 
     @property
-    def model_weights_load_path(self):
+    def model_weights_load_path(self) -> Optional[str]:
+        if not self.is_loading:
+            return None
         return self.get_model_weights_path(self.MODEL_LOAD_PATH)
 
     @property
-    def entire_model_save_path(self):
+    def entire_model_save_path(self) -> Optional[str]:
+        if not self.is_saving:
+            return None
         return self.get_entire_model_path(self.MODEL_SAVE_PATH)
 
     @property
-    def model_weights_save_path(self):
+    def model_weights_save_path(self) -> Optional[str]:
+        if not self.is_saving:
+            return None
         return self.get_model_weights_path(self.MODEL_SAVE_PATH)
 
     def verify(self):
