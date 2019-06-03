@@ -1,5 +1,5 @@
 from itertools import chain
-from typing import Optional, Dict, Iterable, Tuple, NamedTuple
+from typing import Optional, Dict, Iterable, Set, NamedTuple
 import pickle
 import os
 from enum import Enum
@@ -101,10 +101,8 @@ class Code2VecVocabs:
         self.token_vocab: Optional[Vocab] = None
         self.path_vocab: Optional[Vocab] = None
         self.target_vocab: Optional[Vocab] = None
-
+        self._already_saved_in_paths: Set[str] = set()
         self._load_or_create()
-
-        self._already_saved_in_paths = set()
 
     def _load_or_create(self):
         vocabularies_load_path = None
