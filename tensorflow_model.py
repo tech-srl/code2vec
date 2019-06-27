@@ -87,6 +87,12 @@ class Code2VecModel(Code2VecModelBase):
         optimizer, train_loss = self._build_tf_training_graph(input_tensors)
         self.saver = tf.compat.v1.train.Saver(max_to_keep=self.config.MAX_TO_KEEP)
 
+        print('Number of trainable params:',
+            np.sum([np.prod(v.get_shape().as_list()) for v in tf.trainable_variables()]))
+        for variable in tf.trainable_variables():
+            print("variable name: {} -- shape: {} -- #params: {}".format(
+                variable.name, variable.get_shape(), np.prod(variable.get_shape().as_list())))
+
         self._initialize_session_variables()
 
         if self.config.MODEL_LOAD_PATH:
