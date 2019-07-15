@@ -5,11 +5,11 @@ This is an official implementation of the model described in:
 [Uri Alon](http://urialon.cswp.cs.technion.ac.il), [Meital Zilberstein](http://www.cs.technion.ac.il/~mbs/), [Omer Levy](https://levyomer.wordpress.com) and [Eran Yahav](http://www.cs.technion.ac.il/~yahave/),
 "code2vec: Learning Distributed Representations of Code", POPL'2019 [[PDF]](https://urialon.cswp.cs.technion.ac.il/wp-content/uploads/sites/83/2018/12/code2vec-popl19.pdf)
 
-_**July 2019** - Add `tf.keras` model implementation (see [here](#choosing-implementation-to-use))._
-
 _**October 2018** - The paper was accepted to [POPL'2019](https://popl19.sigplan.org)_!
 
 _**April 2019** - The talk video is available [here](https://www.youtube.com/watch?v=EJ8okcxL2Iw)_.
+
+_**July 2019** - Add `tf.keras` model implementation (see [here](#choosing-implementation-to-use))._
 
 An **online demo** is available at [https://code2vec.org/](https://code2vec.org/).
 
