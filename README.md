@@ -5,7 +5,9 @@ This is an official implementation of the model described in:
 [Uri Alon](http://urialon.cswp.cs.technion.ac.il), [Meital Zilberstein](http://www.cs.technion.ac.il/~mbs/), [Omer Levy](https://levyomer.wordpress.com) and [Eran Yahav](http://www.cs.technion.ac.il/~yahave/),
 "code2vec: Learning Distributed Representations of Code", POPL'2019 [[PDF]](https://urialon.cswp.cs.technion.ac.il/wp-content/uploads/sites/83/2018/12/code2vec-popl19.pdf)
 
-_**October 2018** - the paper was accepted to [POPL'2019](https://popl19.sigplan.org)_!
+_**July 2019** - Add `tf.keras` model implementation (see [here](#choosing-implementation-to-use))._
+
+_**October 2018** - The paper was accepted to [POPL'2019](https://popl19.sigplan.org)_!
 
 _**April 2019** - The talk video is available [here](https://www.youtube.com/watch?v=EJ8okcxL2Iw)_.
 
@@ -37,7 +39,7 @@ Table of Contents
 On Ubuntu:
   * [Python3](https://www.linuxbabe.com/ubuntu/install-python-3-6-ubuntu-16-04-16-10-17-04). To check if you have it:
 > python3 --version
-  * TensorFlow - version 1.13.1 or newer ([install](https://www.tensorflow.org/install/install_linux)).
+  * TensorFlow - version 2.0.0-beta1 ([install](https://www.tensorflow.org/install/install_linux)).
   To check TensorFlow version:
 > python3 -c 'import tensorflow as tf; print(tf.\_\_version\_\_)'
   * If you are using a GPU, you will need CUDA 10.0
