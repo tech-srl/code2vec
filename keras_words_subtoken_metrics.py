@@ -49,8 +49,8 @@ class WordsSubtokenMetricBase(tf.metrics.Metric):
         true_target_word_string = tf.reshape(true_target_word_string, [-1])
 
         # We split each word into subtokens
-        true_target_subwords = tf.string_split(true_target_word_string, delimiter=self.subtokens_delimiter)
-        prediction_subwords = tf.string_split(predicted_word, delimiter=self.subtokens_delimiter)
+        true_target_subwords = tf.compat.v1.string_split(true_target_word_string, sep=self.subtokens_delimiter)
+        prediction_subwords = tf.compat.v1.string_split(predicted_word, sep=self.subtokens_delimiter)
         true_target_subwords = tf.sparse.to_dense(true_target_subwords, default_value=SpecialVocabWords.PAD)
         prediction_subwords = tf.sparse.to_dense(prediction_subwords, default_value=SpecialVocabWords.PAD)
         true_target_subwords_mask = tf.not_equal(true_target_subwords, SpecialVocabWords.PAD)

@@ -185,7 +185,7 @@ class PathContextReader:
         target_index = self.vocabs.target_vocab.lookup_index(target_str)
 
         contexts_str = tf.stack(row_parts[1:(self.config.MAX_CONTEXTS + 1)], axis=0)
-        split_contexts = tf.string_split(contexts_str, delimiter=',', skip_empty=False)
+        split_contexts = tf.compat.v1.string_split(contexts_str, sep=',', skip_empty=False)
         # dense_split_contexts = tf.sparse_tensor_to_dense(split_contexts, default_value=SpecialVocabWords.PAD)
         sparse_split_contexts = tf.sparse.SparseTensor(
             indices=split_contexts.indices, values=split_contexts.values, dense_shape=[self.config.MAX_CONTEXTS, 3])
