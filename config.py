@@ -65,6 +65,7 @@ class Config:
         self.CODE_VECTOR_SIZE = self.context_vector_size
         self.TARGET_EMBEDDINGS_SIZE = self.CODE_VECTOR_SIZE
         self.DROPOUT_KEEP_RATE = 0.75
+        self.SEPARATE_OOV_AND_PAD = False
 
     def load_from_args(self):
         args = self.arguments_parser().parse_args()
@@ -89,8 +90,8 @@ class Config:
         self.TRAIN_BATCH_SIZE: int = 0
         self.TEST_BATCH_SIZE: int = 0
         self.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION: int = 0
-        self.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS: int = 0   # TODO: update README;
-        self.NUM_TRAIN_BATCHES_TO_EVALUATE: int = 0   # TODO: update README; update tensorflow_model to use it
+        self.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS: int = 0
+        self.NUM_TRAIN_BATCHES_TO_EVALUATE: int = 0
         self.READER_NUM_PARALLEL_BATCHES: int = 0
         self.SHUFFLE_BUFFER_SIZE: int = 0
         self.CSV_BUFFER_SIZE: int = 0
@@ -107,6 +108,7 @@ class Config:
         self.CODE_VECTOR_SIZE: int = 0
         self.TARGET_EMBEDDINGS_SIZE: int = 0
         self.DROPOUT_KEEP_RATE: float = 0
+        self.SEPARATE_OOV_AND_PAD: bool = False
 
         # Automatically filled by `args`.
         self.PREDICT: bool = False   # TODO: update README;

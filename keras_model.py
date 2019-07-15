@@ -13,7 +13,7 @@ from typing import List, Optional, Iterable, Union, Callable, Dict
 from collections import namedtuple
 import time
 import datetime
-from vocabularies import SpecialVocabWords, VocabType
+from vocabularies import VocabType
 from keras_attention_layer import AttentionLayer
 from keras_topk_word_predictions_layer import TopKWordPredictionsLayer
 from keras_words_subtoken_metrics import WordsSubtokenPrecisionMetric, WordsSubtokenRecallMetric, WordsSubtokenF1Metric
@@ -193,7 +193,7 @@ class Code2VecModel(Code2VecModelBase):
             top_k_acc_metric.__name__ = 'top{k}_acc'.format(k=k)
             top_k_acc_metrics.append(top_k_acc_metric)
         predicted_words_filters = [
-            lambda word_strings: tf.not_equal(word_strings, SpecialVocabWords.OOV),
+            lambda word_strings: tf.not_equal(word_strings, self.vocabs.target_vocab.special_words.OOV),
             lambda word_strings: tf.strings.regex_full_match(word_strings, r'^[a-zA-Z\|]+$')
         ]
         words_subtokens_metrics = [

@@ -42,7 +42,8 @@ class InteractivePredictor:
                 continue
             raw_prediction_results = self.model.predict(predict_lines)
             method_prediction_results = common.parse_prediction_results(
-                raw_prediction_results, hash_to_string_dict, topk=SHOW_TOP_CONTEXTS)
+                raw_prediction_results, hash_to_string_dict,
+                self.model.vocabs.target_vocab.special_words, topk=SHOW_TOP_CONTEXTS)
             for raw_prediction, method_prediction in zip(raw_prediction_results, method_prediction_results):
                 print('Original name:\t' + method_prediction.original_name)
                 for name_prob_pair in method_prediction.predictions:

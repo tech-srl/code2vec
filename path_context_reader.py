@@ -1,7 +1,7 @@
 import tensorflow as tf
 from typing import Dict, Tuple, NamedTuple, Union, Optional, Iterable
 from config import Config
-from vocabularies import Code2VecVocabs, SpecialVocabWords
+from vocabularies import Code2VecVocabs
 import abc
 from functools import reduce
 from enum import Enum
@@ -65,8 +65,6 @@ class ModelInputTensorsFormer(abc.ABC):
 
 
 class PathContextReader:
-    CONTEXT_PADDING = ','.join([SpecialVocabWords.PAD] * 3)
-
     def __init__(self,
                  vocabs: Code2VecVocabs,
                  config: Config,
@@ -78,7 +76,11 @@ class PathContextReader:
         self.model_input_tensors_former = model_input_tensors_former
         self.estimator_action = estimator_action
         self.repeat_endlessly = repeat_endlessly
-        self.csv_record_defaults = [[SpecialVocabWords.OOV]] + ([[self.CONTEXT_PADDING]] * self.config.MAX_CONTEXTS)
+        self.CONTEXT_PADDING = ','.join([self.vocabs.token_vocab.special_words.PAD,
+                                         self.vocabs.path_vocab.special_words.PAD,
+                                         self.vocabs.token_vocab.special_words.PAD])
+        self.csv_record_defaults = [[self.vocabs.target_vocab.special_words.OOV]] + \
+                                   ([[self.CONTEXT_PADDING]] * self.config.MAX_CONTEXTS)
 
         # initialize the needed lookup tables (if not already initialized).
         self.create_needed_vocabs_lookup_tables(self.vocabs)
@@ -158,18 +160,18 @@ class PathContextReader:
         # FIXME: Does "valid" here mean just "no padding" or "neither padding nor OOV"? I assumed just "no padding".
         any_word_valid_mask_per_context_part = [
             tf.not_equal(tf.reduce_max(row_parts.path_source_token_indices, axis=0),
-                         self.vocabs.token_vocab.word_to_index[SpecialVocabWords.PAD]),
+                         self.vocabs.token_vocab.word_to_index[self.vocabs.token_vocab.special_words.PAD]),
             tf.not_equal(tf.reduce_max(row_parts.path_target_token_indices, axis=0),
-                         self.vocabs.token_vocab.word_to_index[SpecialVocabWords.PAD]),
+                         self.vocabs.token_vocab.word_to_index[self.vocabs.token_vocab.special_words.PAD]),
             tf.not_equal(tf.reduce_max(row_parts.path_indices, axis=0),
-                         self.vocabs.path_vocab.word_to_index[SpecialVocabWords.PAD])]
+                         self.vocabs.path_vocab.word_to_index[self.vocabs.path_vocab.special_words.PAD])]
         any_contexts_is_valid = reduce(tf.logical_or, any_word_valid_mask_per_context_part)  # scalar
 
         if self.estimator_action.is_evaluate:
             cond = any_contexts_is_valid  # scalar
         else:  # training
             word_is_valid = tf.greater(
-                row_parts.target_index, self.vocabs.target_vocab.word_to_index[SpecialVocabWords.OOV])  # scalar
+                row_parts.target_index, self.vocabs.target_vocab.word_to_index[self.vocabs.target_vocab.special_words.OOV])  # scalar
             cond = tf.logical_and(word_is_valid, any_contexts_is_valid)  # scalar
 
         return cond  # scalar
@@ -186,11 +188,11 @@ class PathContextReader:
 
         contexts_str = tf.stack(row_parts[1:(self.config.MAX_CONTEXTS + 1)], axis=0)
         split_contexts = tf.compat.v1.string_split(contexts_str, sep=',', skip_empty=False)
-        # dense_split_contexts = tf.sparse_tensor_to_dense(split_contexts, default_value=SpecialVocabWords.PAD)
+        # dense_split_contexts = tf.sparse_tensor_to_dense(split_contexts, default_value=self.vocabs.token_vocab.special_words.PAD)
         sparse_split_contexts = tf.sparse.SparseTensor(
             indices=split_contexts.indices, values=split_contexts.values, dense_shape=[self.config.MAX_CONTEXTS, 3])
         dense_split_contexts = tf.reshape(
-            tf.sparse.to_dense(sp_input=sparse_split_contexts, default_value=SpecialVocabWords.PAD),
+            tf.sparse.to_dense(sp_input=sparse_split_contexts, default_value=self.vocabs.token_vocab.special_words.PAD),
             shape=[self.config.MAX_CONTEXTS, 3])  # (max_contexts, 3)
 
         path_source_token_strings = tf.squeeze(
@@ -206,9 +208,9 @@ class PathContextReader:
 
         # FIXME: Does "valid" here mean just "no padding" or "neither padding nor OOV"? I assumed just "no padding".
         valid_word_mask_per_context_part = [
-            tf.not_equal(path_source_token_indices, self.vocabs.token_vocab.word_to_index[SpecialVocabWords.PAD]),
-            tf.not_equal(path_target_token_indices, self.vocabs.token_vocab.word_to_index[SpecialVocabWords.PAD]),
-            tf.not_equal(path_indices, self.vocabs.path_vocab.word_to_index[SpecialVocabWords.PAD])]  # [(max_contexts, )]
+            tf.not_equal(path_source_token_indices, self.vocabs.token_vocab.word_to_index[self.vocabs.token_vocab.special_words.PAD]),
+            tf.not_equal(path_target_token_indices, self.vocabs.token_vocab.word_to_index[self.vocabs.token_vocab.special_words.PAD]),
+            tf.not_equal(path_indices, self.vocabs.path_vocab.word_to_index[self.vocabs.path_vocab.special_words.PAD])]  # [(max_contexts, )]
         context_valid_mask = tf.cast(reduce(tf.logical_or, valid_word_mask_per_context_part), dtype=tf.float32)  # (max_contexts, )
 
         assert all(tensor.shape == (self.config.MAX_CONTEXTS,) for tensor in

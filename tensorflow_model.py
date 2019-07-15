@@ -3,6 +3,7 @@ import numpy as np
 import time
 from typing import Dict, Optional, List, Iterable
 from collections import Counter
+from functools import partial
 
 from path_context_reader import PathContextReader, ModelInputTensorsFormer, ReaderInputTensors, EstimatorAction
 from common import common
@@ -172,9 +173,11 @@ class Code2VecModel(Code2VecModelBase):
                 code_vectors_file = open(self.config.TEST_DATA_PATH + '.vectors', 'w')
             total_predictions = 0
             total_prediction_batches = 0
-            subtokens_evaluation_metric = SubtokensEvaluationMetric()
+            subtokens_evaluation_metric = SubtokensEvaluationMetric(
+                partial(common.filter_impossible_names, self.vocabs.target_vocab.special_words))
             topk_accuracy_evaluation_metric = TopKAccuracyEvaluationMetric(
-                self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION)
+                self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION,
+                partial(common.get_first_match_word_from_top_predictions, self.vocabs.target_vocab.special_words))
             start_time = time.time()
 
             self.sess.run(self.eval_input_iterator_reset_op)
@@ -422,7 +425,8 @@ class Code2VecModel(Code2VecModelBase):
 
     def _log_predictions_during_evaluation(self, results, output_file):
         for original_name, top_predicted_words in results:
-            found_match = common.get_first_match_word_from_top_predictions(original_name, top_predicted_words)
+            found_match = common.get_first_match_word_from_top_predictions(
+                self.vocabs.target_vocab.special_words, original_name, top_predicted_words)
             if found_match is not None:
                 prediction_idx, predicted_word = found_match
                 if prediction_idx == 0:
@@ -460,15 +464,16 @@ class Code2VecModel(Code2VecModelBase):
 
 
 class SubtokensEvaluationMetric:
-    def __init__(self):
+    def __init__(self, filter_impossible_names_fn):
         self.nr_true_positives: int = 0
         self.nr_false_positives: int = 0
         self.nr_false_negatives: int = 0
         self.nr_predictions: int = 0
+        self.filter_impossible_names_fn = filter_impossible_names_fn
 
     def update_batch(self, results):
         for original_name, top_words in results:
-            prediction = common.filter_impossible_names(top_words)[0]
+            prediction = self.filter_impossible_names_fn(top_words)[0]
             original_subtokens = Counter(common.get_subtokens(original_name))
             predicted_subtokens = Counter(common.get_subtokens(prediction))
             self.nr_true_positives += sum(count for element, count in predicted_subtokens.items()
@@ -505,15 +510,16 @@ class SubtokensEvaluationMetric:
 
 
 class TopKAccuracyEvaluationMetric:
-    def __init__(self, top_k: int):
+    def __init__(self, top_k: int, get_first_match_word_from_top_predictions_fn):
         self.top_k = top_k
         self.nr_correct_predictions = np.zeros(self.top_k)
         self.nr_predictions: int = 0
+        self.get_first_match_word_from_top_predictions_fn = get_first_match_word_from_top_predictions_fn
 
     def update_batch(self, results):
         for original_name, top_predicted_words in results:
             self.nr_predictions += 1
-            found_match = common.get_first_match_word_from_top_predictions(original_name, top_predicted_words)
+            found_match = self.get_first_match_word_from_top_predictions_fn(original_name, top_predicted_words)
             if found_match is not None:
                 suggestion_idx, _ = found_match
                 self.nr_correct_predictions[suggestion_idx:self.top_k] += 1

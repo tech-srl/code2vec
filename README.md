@@ -153,8 +153,10 @@ Batch size in training.
 Batch size in evaluating. Affects only the evaluation speed and memory consumption, does not affect the results.
 #### config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION = 10
 Number of words with highest scores in $ y_hat $ to consider during prediction and evaluation.
-#### config.NUM_BATCHES_TO_LOG = 100
-Number of batches to complete between two logging records.
+#### config.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS = 100
+Number of training batches to complete between two progress-logging records.
+#### config.NUM_TRAIN_BATCHES_TO_EVALUATE = 100
+Number of training batches to complete between model evaluations on the test set.
 #### config.READER_NUM_PARALLEL_BATCHES = 4
 The number of threads enqueuing examples to the reader queue.
 #### config.SHUFFLE_BUFFER_SIZE = 10000
@@ -185,6 +187,8 @@ Embedding size for target words.
 Keep this number of newest trained versions during training.
 #### config.DROPOUT_KEEP_RATE = 0.75
 Dropout rate used during training.
+#### config.SEPARATE_OOV_AND_PAD = False
+Whether to treat `<OOV>` and `<PAD>` as two different special tokens whenever possible.
 
 ## Features
 Code2vec supports the following features: 

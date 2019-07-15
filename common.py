@@ -4,8 +4,7 @@ import tensorflow as tf
 from itertools import takewhile, repeat
 from typing import List, Optional, Tuple
 from datetime import datetime
-
-from vocabularies import SpecialVocabWords
+from collections import OrderedDict
 
 
 class common:
@@ -121,12 +120,12 @@ class common:
             yield data_lines[x:x + batch_size]
 
     @staticmethod
-    def legal_method_names_checker(name):
-        return name != SpecialVocabWords.OOV and re.match(r'^[a-zA-Z|]+$', name)
+    def legal_method_names_checker(special_words, name):
+        return name != special_words.OOV and re.match(r'^[a-zA-Z|]+$', name)
 
     @staticmethod
-    def filter_impossible_names(top_words):
-        result = list(filter(common.legal_method_names_checker, top_words))
+    def filter_impossible_names(special_words, top_words):
+        result = list(filter(lambda word: common.legal_method_names_checker(special_words, word), top_words))
         return result
 
     @staticmethod
@@ -134,12 +133,12 @@ class common:
         return str.split('|')
 
     @staticmethod
-    def parse_prediction_results(raw_prediction_results, unhash_dict, topk: int = 5) -> List['MethodPredictionResults']:
+    def parse_prediction_results(raw_prediction_results, unhash_dict, special_words, topk: int = 5) -> List['MethodPredictionResults']:
         prediction_results = []
         for single_method_prediction in raw_prediction_results:
             current_method_prediction_results = MethodPredictionResults(single_method_prediction.original_name)
             for i, predicted in enumerate(single_method_prediction.topk_predicted_words):
-                if predicted == SpecialVocabWords.OOV:
+                if predicted == special_words.OOV:
                     continue
                 suggestion_subtokens = common.get_subtokens(predicted)
                 current_method_prediction_results.append_prediction(
@@ -179,9 +178,9 @@ class common:
         )
 
     @staticmethod
-    def get_first_match_word_from_top_predictions(original_name, top_predicted_words) -> Optional[Tuple[int, str]]:
+    def get_first_match_word_from_top_predictions(special_words, original_name, top_predicted_words) -> Optional[Tuple[int, str]]:
         normalized_original_name = common.normalize_word(original_name)
-        for suggestion_idx, predicted_word in enumerate(common.filter_impossible_names(top_predicted_words)):
+        for suggestion_idx, predicted_word in enumerate(common.filter_impossible_names(special_words, top_predicted_words)):
             normalized_possible_suggestion = common.normalize_word(predicted_word)
             if normalized_original_name == normalized_possible_suggestion:
                 return suggestion_idx, predicted_word
@@ -196,6 +195,10 @@ class common:
         """Yield successive n-sized chunks from l."""
         for i in range(0, len(l), n):
             yield l[i:i + n]
+
+    @staticmethod
+    def get_unique_list(lst: list):
+        return list(OrderedDict(((item, 0) for item in lst)).keys())
 
 
 class MethodPredictionResults:

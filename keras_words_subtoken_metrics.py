@@ -6,7 +6,6 @@ from typing import Optional, Callable, List
 from functools import reduce
 
 from common import common
-from vocabularies import SpecialVocabWords
 
 
 class WordsSubtokenMetricBase(tf.metrics.Metric):
@@ -51,10 +50,10 @@ class WordsSubtokenMetricBase(tf.metrics.Metric):
         # We split each word into subtokens
         true_target_subwords = tf.compat.v1.string_split(true_target_word_string, sep=self.subtokens_delimiter)
         prediction_subwords = tf.compat.v1.string_split(predicted_word, sep=self.subtokens_delimiter)
-        true_target_subwords = tf.sparse.to_dense(true_target_subwords, default_value=SpecialVocabWords.PAD)
-        prediction_subwords = tf.sparse.to_dense(prediction_subwords, default_value=SpecialVocabWords.PAD)
-        true_target_subwords_mask = tf.not_equal(true_target_subwords, SpecialVocabWords.PAD)
-        prediction_subwords_mask = tf.not_equal(prediction_subwords, SpecialVocabWords.PAD)
+        true_target_subwords = tf.sparse.to_dense(true_target_subwords, default_value='<PAD>')
+        prediction_subwords = tf.sparse.to_dense(prediction_subwords, default_value='<PAD>')
+        true_target_subwords_mask = tf.not_equal(true_target_subwords, '<PAD>')
+        prediction_subwords_mask = tf.not_equal(prediction_subwords, '<PAD>')
         # Now shapes of true_target_subwords & true_target_subwords are (batch, subtokens)
 
         # We use broadcast to calculate 2 lists difference with duplicates preserving.

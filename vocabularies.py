@@ -1,11 +1,13 @@
 from itertools import chain
-from typing import Optional, Dict, Iterable, Set, NamedTuple
+from typing import Optional, Dict, Iterable, Set, NamedTuple, Type
 import pickle
 import os
 from enum import Enum
 from config import Config
 import tensorflow as tf
-# from ordered_set import OrderedSet  # pip install ordered-set
+from argparse import Namespace
+
+from common import common
 
 
 class VocabType(Enum):
@@ -14,19 +16,37 @@ class VocabType(Enum):
     Path = 3
 
 
-class SpecialVocabWords:
-    PAD = '<PAD>'  # padding            new: <PAD>  old: NoSuchWord
-    OOV = '<OOV>'  # out-of-vocabulary  new: <OOV>  old: NoSuchWord
+SpecialVocabWordsType = Namespace
+
+
+_SpecialVocabWords_OnlyOov = Namespace(
+    OOV='<OOV>'
+)
+
+_SpecialVocabWords_SeparateOovPad = Namespace(
+    PAD='<PAD>',
+    OOV='<OOV>'
+)
+
+_SpecialVocabWords_JoinedOovPad = Namespace(
+    PAD_OR_OOV='<PAD_OR_OOV>',
+    PAD='<PAD_OR_OOV>',
+    OOV='<PAD_OR_OOV>'
+)
 
 
 class Vocab:
-    def __init__(self, words: Iterable[str]):
+    def __init__(self, words: Iterable[str], special_words: SpecialVocabWordsType):
+        if special_words is None:
+            special_words = Namespace()
+
         self.word_to_index: Dict[str, int] = {}
         self.index_to_word: Dict[int, str] = {}
         self._word_to_index_lookup_table = None
         self._index_to_word_lookup_table = None
+        self.special_words: SpecialVocabWordsType = special_words
 
-        for index, word in enumerate(words):  # if PAD+OOV is same use: enumerate(OrderedSet(words))
+        for index, word in enumerate(words):
             self.word_to_index[word] = index
             self.index_to_word[index] = word
 
@@ -36,9 +56,9 @@ class Vocab:
         pickle.dump((self.word_to_index, self.index_to_word), file)
 
     @classmethod
-    def load_from_file(cls, file) -> 'Vocab':
+    def load_from_file(cls, file, special_words: SpecialVocabWordsType) -> 'Vocab':
         word_to_index, index_to_word = pickle.load(file)
-        vocab = cls([])
+        vocab = cls([], special_words)
         vocab.word_to_index = word_to_index
         vocab.index_to_word = index_to_word
         vocab.size = len(word_to_index)
@@ -46,11 +66,13 @@ class Vocab:
 
     @classmethod
     def create_from_freq_dict(cls, word_to_count: Dict[str, int], max_size: int,
-                              special_words: Optional[Iterable[str]] = None):
+                              special_words: Optional[SpecialVocabWordsType] = None):
+        if special_words is None:
+            special_words = Namespace()
         sorted_counts = sorted(word_to_count, key=word_to_count.get, reverse=True)
         limited_sorted = sorted_counts[:max_size]
-        all_words = chain(special_words, limited_sorted)
-        return cls(all_words)
+        all_words = chain(common.get_unique_list(special_words.__dict__.values()), limited_sorted)
+        return cls(all_words, special_words)
 
     @staticmethod
     def _create_word_to_index_lookup_table(word_to_index: Dict[str, int], default_value: int):
@@ -70,13 +92,13 @@ class Vocab:
     def get_word_to_index_lookup_table(self) -> tf.lookup.StaticHashTable:
         if self._word_to_index_lookup_table is None:
             self._word_to_index_lookup_table = self._create_word_to_index_lookup_table(
-                self.word_to_index, default_value=self.word_to_index[SpecialVocabWords.OOV])
+                self.word_to_index, default_value=self.word_to_index[self.special_words.OOV])
         return self._word_to_index_lookup_table
 
     def get_index_to_word_lookup_table(self) -> tf.lookup.StaticHashTable:
         if self._index_to_word_lookup_table is None:
             self._index_to_word_lookup_table = self._create_index_to_word_lookup_table(
-                self.index_to_word, default_value=SpecialVocabWords.OOV)
+                self.index_to_word, default_value=self.special_words.OOV)
         return self._index_to_word_lookup_table
 
     def lookup_index(self, word: tf.Tensor) -> tf.Tensor:
@@ -119,9 +141,9 @@ class Code2VecVocabs:
         assert os.path.exists(vocabularies_load_path)
         self.config.log('Loading model vocabularies from: `%s` ... ' % vocabularies_load_path)
         with open(vocabularies_load_path, 'rb') as file:
-            self.token_vocab = Vocab.load_from_file(file)
-            self.path_vocab = Vocab.load_from_file(file)
-            self.target_vocab = Vocab.load_from_file(file)
+            self.token_vocab = Vocab.load_from_file(file, self._get_special_words_by_vocab_type(VocabType.Token))
+            self.path_vocab = Vocab.load_from_file(file, self._get_special_words_by_vocab_type(VocabType.Path))
+            self.target_vocab = Vocab.load_from_file(file, self._get_special_words_by_vocab_type(VocabType.Target))
         self.config.log('Done loading model vocabularies.')
         self._already_saved_in_paths.add(vocabularies_load_path)
 
@@ -153,7 +175,7 @@ class Code2VecVocabs:
     #         path_vocab = Vocab([])
     #         target_vocab = Vocab([])
     #
-    #         for vocab in (token_vocab, target_vocab, path_vocab):
+    #         for vocab, vocab_type in ((token_vocab, VocabType.Token), (target_vocab, VocabType.Target), (path_vocab, VocabType.Path)):
     #             vocab.word_to_index = pickle.load(file)
     #             vocab.index_to_word = pickle.load(file)
     #             _ = pickle.load(file)
@@ -162,6 +184,7 @@ class Code2VecVocabs:
     #             vocab.word_to_index[SpecialVocabWords.OOV] = 0
     #             vocab.index_to_word[0] = SpecialVocabWords.OOV
     #             vocab.size = len(vocab.word_to_index)
+    #             vocab.special_words = self._get_special_words_by_vocab_type(vocab_type)
     #
     #     print('Done')
     #     vocabs = cls(token_vocab, path_vocab, target_vocab)
@@ -173,16 +196,23 @@ class Code2VecVocabs:
         self.config.log('Word frequencies dictionaries loaded. Now creating vocabularies.')
         self.token_vocab = Vocab.create_from_freq_dict(
             word_freq_dict.token_to_count, self.config.MAX_TOKEN_VOCAB_SIZE,
-            special_words=[SpecialVocabWords.PAD, SpecialVocabWords.OOV])
+            special_words=self._get_special_words_by_vocab_type(VocabType.Token))
         self.config.log('Created token vocab. size: %d' % self.token_vocab.size)
         self.path_vocab = Vocab.create_from_freq_dict(
             word_freq_dict.path_to_count, self.config.MAX_PATH_VOCAB_SIZE,
-            special_words=[SpecialVocabWords.PAD, SpecialVocabWords.OOV])
+            special_words=self._get_special_words_by_vocab_type(VocabType.Path))
         self.config.log('Created path vocab. size: %d' % self.path_vocab.size)
         self.target_vocab = Vocab.create_from_freq_dict(
             word_freq_dict.target_to_count, self.config.MAX_TARGET_VOCAB_SIZE,
-            special_words=[SpecialVocabWords.OOV])
+            special_words=self._get_special_words_by_vocab_type(VocabType.Target))
         self.config.log('Created target vocab. size: %d' % self.target_vocab.size)
+
+    def _get_special_words_by_vocab_type(self, vocab_type: VocabType) -> SpecialVocabWordsType:
+        if not self.config.SEPARATE_OOV_AND_PAD:
+            return _SpecialVocabWords_JoinedOovPad
+        if vocab_type == VocabType.Target:
+            return _SpecialVocabWords_OnlyOov
+        return _SpecialVocabWords_SeparateOovPad
 
     def save(self, vocabularies_save_path: str):
         if vocabularies_save_path in self._already_saved_in_paths:
