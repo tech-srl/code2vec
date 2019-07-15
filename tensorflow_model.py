@@ -11,6 +11,9 @@ from config import Config
 from model_base import Code2VecModelBase, ModelEvaluationResults, ModelPredictionResults
 
 
+tf.compat.v1.disable_eager_execution()
+
+
 class _TFTrainModelInputTensorsFormer(ModelInputTensorsFormer):
     def to_model_input_form(self, input_tensors: ReaderInputTensors):
         return input_tensors.target_index, input_tensors.path_source_token_indices, input_tensors.path_indices, \
@@ -80,7 +83,7 @@ class Code2VecModel(Code2VecModelBase):
         train_reader = PathContextReader(vocabs=self.vocabs,
                                          model_input_tensors_former=_TFTrainModelInputTensorsFormer(),
                                          config=self.config, estimator_action=EstimatorAction.Train)
-        input_iterator = train_reader.get_dataset().make_initializable_iterator()
+        input_iterator = tf.compat.v1.data.make_initializable_iterator(train_reader.get_dataset())
         input_iterator_reset_op = input_iterator.initializer
         input_tensors = input_iterator.get_next()
 
@@ -88,8 +91,8 @@ class Code2VecModel(Code2VecModelBase):
         self.saver = tf.compat.v1.train.Saver(max_to_keep=self.config.MAX_TO_KEEP)
 
         print('Number of trainable params:',
-            np.sum([np.prod(v.get_shape().as_list()) for v in tf.trainable_variables()]))
-        for variable in tf.trainable_variables():
+            np.sum([np.prod(v.get_shape().as_list()) for v in tf.compat.v1.trainable_variables()]))
+        for variable in tf.compat.v1.trainable_variables():
             print("variable name: {} -- shape: {} -- #params: {}".format(
                 variable.name, variable.get_shape(), np.prod(variable.get_shape().as_list())))
 
@@ -147,7 +150,7 @@ class Code2VecModel(Code2VecModelBase):
             self.eval_reader = PathContextReader(vocabs=self.vocabs,
                                                  model_input_tensors_former=_TFEvaluateModelInputTensorsFormer(),
                                                  config=self.config, estimator_action=EstimatorAction.Evaluate)
-            input_iterator = self.eval_reader.get_dataset().make_initializable_iterator()
+            input_iterator = tf.compat.v1.data.make_initializable_iterator(self.eval_reader.get_dataset())
             self.eval_input_iterator_reset_op = input_iterator.initializer
             input_tensors = input_iterator.get_next()
 
@@ -231,18 +234,18 @@ class Code2VecModel(Code2VecModelBase):
             tokens_vocab = tf.compat.v1.get_variable(
                 self.vocab_type_to_tf_variable_name_mapping[VocabType.Token],
                 shape=(self.vocabs.token_vocab.size, self.config.TOKEN_EMBEDDINGS_SIZE), dtype=tf.float32,
-                initializer=tf.initializers.variance_scaling_initializer(factor=1.0, mode='FAN_OUT', uniform=True))
+                initializer=tf.compat.v1.initializers.variance_scaling(scale=1.0, mode='fan_out', distribution="uniform"))
             targets_vocab = tf.compat.v1.get_variable(
                 self.vocab_type_to_tf_variable_name_mapping[VocabType.Target],
                 shape=(self.vocabs.target_vocab.size, self.config.TARGET_EMBEDDINGS_SIZE), dtype=tf.float32,
-                initializer=tf.initializers.variance_scaling_initializer(factor=1.0, mode='FAN_OUT', uniform=True))
+                initializer=tf.compat.v1.initializers.variance_scaling(scale=1.0, mode='fan_out', distribution="uniform"))
             attention_param = tf.compat.v1.get_variable(
                 'ATTENTION',
                 shape=(self.config.CODE_VECTOR_SIZE, 1), dtype=tf.float32)
             paths_vocab = tf.compat.v1.get_variable(
                 self.vocab_type_to_tf_variable_name_mapping[VocabType.Path],
                 shape=(self.vocabs.path_vocab.size, self.config.PATH_EMBEDDINGS_SIZE), dtype=tf.float32,
-                initializer=tf.initializers.variance_scaling_initializer(factor=1.0, mode='FAN_OUT', uniform=True))
+                initializer=tf.compat.v1.initializers.variance_scaling(scale=1.0, mode='fan_out', distribution="uniform"))
 
             code_vectors, _ = self._calculate_weighted_contexts(
                 tokens_vocab, paths_vocab, attention_param, input_tensors.path_source_token_indices,
@@ -268,7 +271,7 @@ class Code2VecModel(Code2VecModelBase):
                                   axis=-1)  # (batch, max_contexts, dim * 3)
 
         if not is_evaluating:
-            context_embed = tf.nn.dropout(context_embed, self.config.DROPOUT_KEEP_RATE)
+            context_embed = tf.nn.dropout(context_embed, rate=1-self.config.DROPOUT_KEEP_RATE)
 
         flat_embed = tf.reshape(context_embed, [-1, self.config.context_vector_size])  # (batch * max_contexts, dim * 3)
         transform_param = tf.compat.v1.get_variable(
@@ -339,7 +342,7 @@ class Code2VecModel(Code2VecModelBase):
                                                     model_input_tensors_former=_TFEvaluateModelInputTensorsFormer(),
                                                     config=self.config, estimator_action=EstimatorAction.Predict)
             self.predict_placeholder = tf.compat.v1.placeholder(tf.string)
-            reader_output = self.predict_reader.process_input_from_row_placeholder(self.predict_placeholder)
+            reader_output = self.predict_reader.process_input_row(self.predict_placeholder)
 
             self.predict_top_words_op, self.predict_top_values_op, self.predict_original_names_op, \
             self.attention_weights_op, self.predict_source_string, self.predict_path_string, \
