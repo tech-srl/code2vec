@@ -65,8 +65,8 @@ class Code2VecModel(Code2VecModelBase):
         self.predict_top_words_op, self.predict_top_values_op, self.predict_original_names_op = None, None, None
 
         self.vocab_type_to_tf_variable_name_mapping: Dict[VocabType, str] = {
-            VocabType.Token: 'TOKENS_VOCAB',    # old: WORDS_VOCAB         new: TOKENS_VOCAB
-            VocabType.Target: 'TARGETS_VOCAB',  # old: TARGET_WORDS_VOCAB  new: TARGETS_VOCAB
+            VocabType.Token: 'WORDS_VOCAB',
+            VocabType.Target: 'TARGET_WORDS_VOCAB',
             VocabType.Path: 'PATHS_VOCAB'
         }
 

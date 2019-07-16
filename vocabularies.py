@@ -1,5 +1,5 @@
 from itertools import chain
-from typing import Optional, Dict, Iterable, Set, NamedTuple, Type
+from typing import Optional, Dict, Iterable, Set, NamedTuple
 import pickle
 import os
 from enum import Enum
@@ -36,43 +36,69 @@ _SpecialVocabWords_JoinedOovPad = Namespace(
 
 
 class Vocab:
-    def __init__(self, words: Iterable[str], special_words: SpecialVocabWordsType):
+    def __init__(self, vocab_type: VocabType, words: Iterable[str],
+                 special_words: Optional[SpecialVocabWordsType] = None):
         if special_words is None:
             special_words = Namespace()
 
+        self.vocab_type = vocab_type
         self.word_to_index: Dict[str, int] = {}
         self.index_to_word: Dict[int, str] = {}
         self._word_to_index_lookup_table = None
         self._index_to_word_lookup_table = None
         self.special_words: SpecialVocabWordsType = special_words
 
-        for index, word in enumerate(words):
+        for index, word in enumerate(chain(common.get_unique_list(special_words.__dict__.values()), words)):
             self.word_to_index[word] = index
             self.index_to_word[index] = word
 
         self.size = len(self.word_to_index)
 
     def save_to_file(self, file):
-        pickle.dump((self.word_to_index, self.index_to_word), file)
+        # Notice: From historical reasons, a saved vocab doesn't include special words.
+        special_words_as_unique_list = common.get_unique_list(self.special_words.__dict__.values())
+        nr_special_words = len(special_words_as_unique_list)
+        pickle.dump((
+            {word: idx for word, idx in self.word_to_index.items() if idx >= nr_special_words},
+            {idx: word for idx, word in self.index_to_word.items() if idx >= nr_special_words},
+            self.size - nr_special_words
+        ), file)
 
     @classmethod
-    def load_from_file(cls, file, special_words: SpecialVocabWordsType) -> 'Vocab':
-        word_to_index, index_to_word = pickle.load(file)
-        vocab = cls([], special_words)
-        vocab.word_to_index = word_to_index
-        vocab.index_to_word = index_to_word
-        vocab.size = len(word_to_index)
+    def load_from_file(cls, vocab_type: VocabType, file, special_words: SpecialVocabWordsType) -> 'Vocab':
+        special_words_as_unique_list = common.get_unique_list(special_words.__dict__.values())
+
+        # Notice: From historical reasons, a saved vocab doesn't include special words,
+        #         so they should be added upon loading.
+
+        word_to_index_wo_specials = pickle.load(file)
+        index_to_word_wo_specials = pickle.load(file)
+        size_wo_specials = pickle.load(file)
+        assert len(index_to_word_wo_specials) == len(word_to_index_wo_specials) == size_wo_specials
+        min_word_idx_wo_specials = min(index_to_word_wo_specials.keys())
+
+        if min_word_idx_wo_specials != len(special_words_as_unique_list):
+            raise ValueError(
+                "Loaded vocabulary `{}` from file `{}` with minimum word index {}, while having to use {} special "
+                "words. Please check `config.SEPARATE_OOV_AND_PAD`.".format(
+                    vocab_type, file.name, min_word_idx_wo_specials, len(special_words_as_unique_list)))
+
+        vocab = cls(vocab_type, [], special_words)
+        vocab.word_to_index = {**word_to_index_wo_specials,
+                               **{word: idx for idx, word in enumerate(special_words_as_unique_list)}}
+        vocab.index_to_word = {**index_to_word_wo_specials,
+                               **{idx: word for idx, word in enumerate(special_words_as_unique_list)}}
+        vocab.size = size_wo_specials + len(special_words_as_unique_list)
         return vocab
 
     @classmethod
-    def create_from_freq_dict(cls, word_to_count: Dict[str, int], max_size: int,
+    def create_from_freq_dict(cls, vocab_type: VocabType, word_to_count: Dict[str, int], max_size: int,
                               special_words: Optional[SpecialVocabWordsType] = None):
         if special_words is None:
             special_words = Namespace()
-        sorted_counts = sorted(word_to_count, key=word_to_count.get, reverse=True)
-        limited_sorted = sorted_counts[:max_size]
-        all_words = chain(common.get_unique_list(special_words.__dict__.values()), limited_sorted)
-        return cls(all_words, special_words)
+        words_sorted_by_counts = sorted(word_to_count, key=word_to_count.get, reverse=True)
+        words_sorted_by_counts_and_limited = words_sorted_by_counts[:max_size]
+        return cls(vocab_type, words_sorted_by_counts_and_limited, special_words)
 
     @staticmethod
     def _create_word_to_index_lookup_table(word_to_index: Dict[str, int], default_value: int):
@@ -123,7 +149,10 @@ class Code2VecVocabs:
         self.token_vocab: Optional[Vocab] = None
         self.path_vocab: Optional[Vocab] = None
         self.target_vocab: Optional[Vocab] = None
+
+        # Used to avoid re-saving a non-modified vocabulary to a path it is already saved in.
         self._already_saved_in_paths: Set[str] = set()
+
         self._load_or_create()
 
     def _load_or_create(self):
@@ -141,69 +170,28 @@ class Code2VecVocabs:
         assert os.path.exists(vocabularies_load_path)
         self.config.log('Loading model vocabularies from: `%s` ... ' % vocabularies_load_path)
         with open(vocabularies_load_path, 'rb') as file:
-            self.token_vocab = Vocab.load_from_file(file, self._get_special_words_by_vocab_type(VocabType.Token))
-            self.path_vocab = Vocab.load_from_file(file, self._get_special_words_by_vocab_type(VocabType.Path))
-            self.target_vocab = Vocab.load_from_file(file, self._get_special_words_by_vocab_type(VocabType.Target))
+            self.token_vocab = Vocab.load_from_file(
+                VocabType.Token, file, self._get_special_words_by_vocab_type(VocabType.Token))
+            self.target_vocab = Vocab.load_from_file(
+                VocabType.Target, file, self._get_special_words_by_vocab_type(VocabType.Target))
+            self.path_vocab = Vocab.load_from_file(
+                VocabType.Path, file, self._get_special_words_by_vocab_type(VocabType.Path))
         self.config.log('Done loading model vocabularies.')
         self._already_saved_in_paths.add(vocabularies_load_path)
-
-    # @classmethod
-    # def __load_or_create(cls, config: Config) -> 'Code2VecVocabs':
-    #     format_type = 'new'
-    #     vocabularies_load_path = None
-    #     if not config.is_training or config.is_loading:
-    #         vocabularies_load_path = config.get_vocabularies_path_from_model_path(config.MODEL_LOAD_PATH)
-    #         if not os.path.isfile(vocabularies_load_path):
-    #             vocabularies_load_path = vocabularies_load_path.replace('vocabularies', 'dictionaries')
-    #             if os.path.isfile(vocabularies_load_path):
-    #                 format_type = 'old'
-    #             else:
-    #                 vocabularies_load_path = None
-    #     if vocabularies_load_path is None:
-    #         return cls.create(config)
-    #     elif format_type == 'new':
-    #         return cls.load(vocabularies_load_path)
-    #     elif format_type == 'old':
-    #         return cls.__load_old_format(vocabularies_load_path)
-    #     assert False
-    #
-    # @classmethod
-    # def __load_old_format(cls, vocabularies_load_path: str) -> 'Code2VecVocabs':
-    #     with open(vocabularies_load_path, 'rb') as file:
-    #         print('Loading model vocabularies from: `%s` ... ' % vocabularies_load_path, end='')
-    #         token_vocab = Vocab([])
-    #         path_vocab = Vocab([])
-    #         target_vocab = Vocab([])
-    #
-    #         for vocab, vocab_type in ((token_vocab, VocabType.Token), (target_vocab, VocabType.Target), (path_vocab, VocabType.Path)):
-    #             vocab.word_to_index = pickle.load(file)
-    #             vocab.index_to_word = pickle.load(file)
-    #             _ = pickle.load(file)
-    #             assert SpecialVocabWords.OOV not in vocab.word_to_index
-    #             assert 0 not in vocab.index_to_word
-    #             vocab.word_to_index[SpecialVocabWords.OOV] = 0
-    #             vocab.index_to_word[0] = SpecialVocabWords.OOV
-    #             vocab.size = len(vocab.word_to_index)
-    #             vocab.special_words = self._get_special_words_by_vocab_type(vocab_type)
-    #
-    #     print('Done')
-    #     vocabs = cls(token_vocab, path_vocab, target_vocab)
-    #     vocabs._already_saved_in_paths.add(vocabularies_load_path)
-    #     return vocabs
 
     def _create_from_word_freq_dict(self):
         word_freq_dict = self._load_word_freq_dict()
         self.config.log('Word frequencies dictionaries loaded. Now creating vocabularies.')
         self.token_vocab = Vocab.create_from_freq_dict(
-            word_freq_dict.token_to_count, self.config.MAX_TOKEN_VOCAB_SIZE,
+            VocabType.Token, word_freq_dict.token_to_count, self.config.MAX_TOKEN_VOCAB_SIZE,
             special_words=self._get_special_words_by_vocab_type(VocabType.Token))
         self.config.log('Created token vocab. size: %d' % self.token_vocab.size)
         self.path_vocab = Vocab.create_from_freq_dict(
-            word_freq_dict.path_to_count, self.config.MAX_PATH_VOCAB_SIZE,
+            VocabType.Path, word_freq_dict.path_to_count, self.config.MAX_PATH_VOCAB_SIZE,
             special_words=self._get_special_words_by_vocab_type(VocabType.Path))
         self.config.log('Created path vocab. size: %d' % self.path_vocab.size)
         self.target_vocab = Vocab.create_from_freq_dict(
-            word_freq_dict.target_to_count, self.config.MAX_TARGET_VOCAB_SIZE,
+            VocabType.Target, word_freq_dict.target_to_count, self.config.MAX_TARGET_VOCAB_SIZE,
             special_words=self._get_special_words_by_vocab_type(VocabType.Target))
         self.config.log('Created target vocab. size: %d' % self.target_vocab.size)
 
@@ -219,8 +207,8 @@ class Code2VecVocabs:
             return
         with open(vocabularies_save_path, 'wb') as file:
             self.token_vocab.save_to_file(file)
-            self.path_vocab.save_to_file(file)
             self.target_vocab.save_to_file(file)
+            self.path_vocab.save_to_file(file)
         self._already_saved_in_paths.add(vocabularies_save_path)
 
     def _load_word_freq_dict(self) -> Code2VecWordFreqDicts:

@@ -188,7 +188,7 @@ class Config:
 
     @classmethod
     def get_vocabularies_path_from_model_path(cls, model_file_path: str) -> str:
-        vocabularies_save_file_name = "vocabularies.bin"
+        vocabularies_save_file_name = "dictionaries.bin"
         return '/'.join(model_file_path.split('/')[:-1] + [vocabularies_save_file_name])
 
     @classmethod

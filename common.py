@@ -2,7 +2,7 @@ import re
 import numpy as np
 import tensorflow as tf
 from itertools import takewhile, repeat
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Iterable
 from datetime import datetime
 from collections import OrderedDict
 
@@ -197,7 +197,7 @@ class common:
             yield l[i:i + n]
 
     @staticmethod
-    def get_unique_list(lst: list):
+    def get_unique_list(lst: Iterable) -> list:
         return list(OrderedDict(((item, 0) for item in lst)).keys())
 
 
