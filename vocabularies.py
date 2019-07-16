@@ -79,9 +79,13 @@ class Vocab:
 
         if min_word_idx_wo_specials != len(special_words_as_unique_list):
             raise ValueError(
-                "Loaded vocabulary `{}` from file `{}` with minimum word index {}, while having to use {} special "
-                "words. Please check `config.SEPARATE_OOV_AND_PAD`.".format(
-                    vocab_type, file.name, min_word_idx_wo_specials, len(special_words_as_unique_list)))
+                "Error while attempting to load vocabulary `{vocab_type}` from file `{file_path}`. "
+                "The stored vocabulary has minimum word index {min_word_idx}, "
+                "while expecting minimum word index to be {nr_special_words} "
+                "because having to use {nr_special_words} special words, which are: {special_words}. "
+                "Please check the parameter `config.SEPARATE_OOV_AND_PAD`.".format(
+                    vocab_type=vocab_type, file_path=file.name, min_word_idx=min_word_idx_wo_specials,
+                    nr_special_words=len(special_words_as_unique_list), special_words=special_words))
 
         vocab = cls(vocab_type, [], special_words)
         vocab.word_to_index = {**word_to_index_wo_specials,
