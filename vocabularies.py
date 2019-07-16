@@ -58,11 +58,12 @@ class Vocab:
         # Notice: From historical reasons, a saved vocab doesn't include special words.
         special_words_as_unique_list = common.get_unique_list(self.special_words.__dict__.values())
         nr_special_words = len(special_words_as_unique_list)
-        pickle.dump((
-            {word: idx for word, idx in self.word_to_index.items() if idx >= nr_special_words},
-            {idx: word for idx, word in self.index_to_word.items() if idx >= nr_special_words},
-            self.size - nr_special_words
-        ), file)
+        word_to_index_wo_specials = {word: idx for word, idx in self.word_to_index.items() if idx >= nr_special_words}
+        index_to_word_wo_specials = {idx: word for idx, word in self.index_to_word.items() if idx >= nr_special_words}
+        size_wo_specials = self.size - nr_special_words
+        pickle.dump(word_to_index_wo_specials, file)
+        pickle.dump(index_to_word_wo_specials, file)
+        pickle.dump(size_wo_specials, file)
 
     @classmethod
     def load_from_file(cls, vocab_type: VocabType, file, special_words: SpecialVocabWordsType) -> 'Vocab':
