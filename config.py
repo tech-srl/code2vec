@@ -47,7 +47,7 @@ class Config:
         self.TRAIN_BATCH_SIZE = 1024
         self.TEST_BATCH_SIZE = self.TRAIN_BATCH_SIZE
         self.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION = 10
-        self.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS = 100
+        self.NUM_BATCHES_TO_LOG_PROGRESS = 100
         self.NUM_TRAIN_BATCHES_TO_EVALUATE = 1800
         self.READER_NUM_PARALLEL_BATCHES = 6  # cpu cores [for tf.contrib.data.map_and_batch() in the reader]
         self.SHUFFLE_BUFFER_SIZE = 10000
@@ -90,7 +90,7 @@ class Config:
         self.TRAIN_BATCH_SIZE: int = 0
         self.TEST_BATCH_SIZE: int = 0
         self.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION: int = 0
-        self.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS: int = 0
+        self.NUM_BATCHES_TO_LOG_PROGRESS: int = 0
         self.NUM_TRAIN_BATCHES_TO_EVALUATE: int = 0
         self.READER_NUM_PARALLEL_BATCHES: int = 0
         self.SHUFFLE_BUFFER_SIZE: int = 0

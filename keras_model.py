@@ -250,7 +250,7 @@ class Code2VecModel(Code2VecModelBase):
             log_dir = "logs/scalars/train_" + common.now_str()
             tensorboard_callback = keras.callbacks.TensorBoard(
                 log_dir=log_dir,
-                update_freq=self.config.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS * self.config.TRAIN_BATCH_SIZE)
+                update_freq=self.config.NUM_BATCHES_TO_LOG_PROGRESS * self.config.TRAIN_BATCH_SIZE)
             keras_callbacks.append(tensorboard_callback)
         return keras_callbacks
 

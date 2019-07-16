@@ -115,7 +115,7 @@ class Code2VecModel(Code2VecModelBase):
                 _, batch_loss = self.sess.run([optimizer, train_loss])
 
                 sum_loss += batch_loss
-                if batch_num % self.config.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS == 0:
+                if batch_num % self.config.NUM_BATCHES_TO_LOG_PROGRESS == 0:
                     self._trace_training(sum_loss, batch_num, multi_batch_start_time)
                     print('Number of waiting examples in queue: %d' % self.sess.run(
                         "shuffle_batch/random_shuffle_queue_Size:0"))
@@ -206,7 +206,7 @@ class Code2VecModel(Code2VecModelBase):
                     total_prediction_batches += 1
                     if self.config.EXPORT_CODE_VECTORS:
                         self._write_code_vectors(code_vectors_file, code_vectors)
-                    if total_prediction_batches % self.config.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS == 0:
+                    if total_prediction_batches % self.config.NUM_BATCHES_TO_LOG_PROGRESS == 0:
                         elapsed = time.time() - start_time
                         # start_time = time.time()
                         self._trace_evaluation(total_predictions, elapsed)
@@ -438,8 +438,8 @@ class Code2VecModel(Code2VecModelBase):
 
     def _trace_training(self, sum_loss, batch_num, multi_batch_start_time):
         multi_batch_elapsed = time.time() - multi_batch_start_time
-        avg_loss = sum_loss / (self.config.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS * self.config.TRAIN_BATCH_SIZE)
-        throughput = self.config.TRAIN_BATCH_SIZE * self.config.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS / \
+        avg_loss = sum_loss / (self.config.NUM_BATCHES_TO_LOG_PROGRESS * self.config.TRAIN_BATCH_SIZE)
+        throughput = self.config.TRAIN_BATCH_SIZE * self.config.NUM_BATCHES_TO_LOG_PROGRESS / \
                      (multi_batch_elapsed if multi_batch_elapsed > 0 else 1)
         print('Average loss at batch %d: %f, \tthroughput: %d samples/sec' % (
             batch_num, avg_loss, throughput))

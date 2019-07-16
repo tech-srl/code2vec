@@ -153,8 +153,8 @@ Batch size in training.
 Batch size in evaluating. Affects only the evaluation speed and memory consumption, does not affect the results.
 #### config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION = 10
 Number of words with highest scores in $ y_hat $ to consider during prediction and evaluation.
-#### config.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS = 100
-Number of training batches to complete between two progress-logging records.
+#### config.NUM_BATCHES_TO_LOG_PROGRESS = 100
+Number of batches (during training / evaluating) to complete between two progress-logging records.
 #### config.NUM_TRAIN_BATCHES_TO_EVALUATE = 100
 Number of training batches to complete between model evaluations on the test set.
 #### config.READER_NUM_PARALLEL_BATCHES = 4

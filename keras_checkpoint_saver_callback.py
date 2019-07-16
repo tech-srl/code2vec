@@ -95,7 +95,7 @@ class ModelTrainingProgressLoggerCallback(MultiBatchCallback):
         self.training_status = training_status
         self.avg_throughput: Optional[float] = None
         super(ModelTrainingProgressLoggerCallback, self).__init__(
-            self.config.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS, average_logs=True)
+            self.config.NUM_BATCHES_TO_LOG_PROGRESS, average_logs=True)
 
     def on_train_begin(self, logs=None):
         self.config.log('Starting training...')
@@ -105,7 +105,7 @@ class ModelTrainingProgressLoggerCallback(MultiBatchCallback):
 
     def on_multi_batch_end(self, batch, logs, multi_batch_elapsed):
         nr_samples_in_multi_batch = self.config.TRAIN_BATCH_SIZE * \
-                                    self.config.NUM_TRAIN_BATCHES_TO_LOG_PROGRESS
+                                    self.config.NUM_BATCHES_TO_LOG_PROGRESS
         throughput = nr_samples_in_multi_batch / multi_batch_elapsed
         if self.avg_throughput is None:
             self.avg_throughput = throughput
