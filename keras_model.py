@@ -24,98 +24,6 @@ from keras_checkpoint_saver_callback import ModelTrainingStatus, ModelTrainingSt
     ModelCheckpointSaverCallback, MultiBatchCallback, ModelTrainingProgressLoggerCallback
 
 
-class ModelEvaluationCallback(MultiBatchCallback):
-    """
-    This callback is passed to the `model.fit()` call.
-    It is responsible to trigger model evaluation during the training.
-    The reason we use a callback and not just passing validation data to `model.fit()` is because:
-        (i)   the training model is different than the evaluation model for efficiency considerations;
-        (ii)  we want to control the logging format;
-        (iii) we want the evaluation to occur once per 1K batches (rather than only once per epoch).
-    """
-
-    def __init__(self, code2vec_model: 'Code2VecModel'):
-        self.code2vec_model = code2vec_model
-        self.avg_eval_duration: Optional[int] = None
-        super(ModelEvaluationCallback, self).__init__(self.code2vec_model.config.NUM_TRAIN_BATCHES_TO_EVALUATE)
-
-    def on_epoch_end(self, epoch, logs=None):
-        self.perform_evaluation()
-
-    def on_multi_batch_end(self, batch, logs, multi_batch_elapsed):
-        self.perform_evaluation()
-
-    def perform_evaluation(self):
-        if self.avg_eval_duration is None:
-            self.code2vec_model.log('Evaluating...')
-        else:
-            self.code2vec_model.log('Evaluating... (takes ~{})'.format(
-                str(datetime.timedelta(seconds=int(self.avg_eval_duration)))))
-        eval_start_time = time.time()
-        evaluation_results = self.code2vec_model.evaluate()
-        eval_duration = time.time() - eval_start_time
-        if self.avg_eval_duration is None:
-            self.avg_eval_duration = eval_duration
-        else:
-            self.avg_eval_duration = eval_duration * 0.5 + self.avg_eval_duration * 0.5
-        self.code2vec_model.log('Done evaluating (took {}). Evaluation results:'.format(
-            str(datetime.timedelta(seconds=int(eval_duration)))))
-
-        self.code2vec_model.log(
-            '    loss: {loss:.4f}, f1: {f1:.4f}, recall: {recall:.4f}, precision: {precision:.4f}'.format(
-                loss=evaluation_results.loss, f1=evaluation_results.subtoken_f1,
-                recall=evaluation_results.subtoken_recall, precision=evaluation_results.subtoken_precision))
-        top_k_acc_formated = ['top{}: {:.4f}'.format(i, acc) for i, acc in enumerate(evaluation_results.topk_acc, start=1)]
-        for top_k_acc_chunk in common.chunks(top_k_acc_formated, 5):
-            self.code2vec_model.log('    ' + (', '.join(top_k_acc_chunk)))
-
-
-class _KerasModelInputTensorsFormer(ModelInputTensorsFormer):
-    """
-    An instance of this class is passed to the reader in order to help the reader to construct the input
-        in the form that the model expects to receive it.
-    This class also enables conveniently & clearly access input parts by their field names.
-        eg: 'tensors.path_indices' instead if 'tensors[1]'.
-    This allows the input tensors to be passed as pure tuples along the computation graph, while the
-        python functions that construct the graph can easily (and clearly) access tensors.
-    """
-
-    def __init__(self, estimator_action: EstimatorAction):
-        self.estimator_action = estimator_action
-
-    def to_model_input_form(self, input_tensors: ReaderInputTensors):
-        inputs = (input_tensors.path_source_token_indices, input_tensors.path_indices,
-                  input_tensors.path_target_token_indices, input_tensors.context_valid_mask)
-        if self.estimator_action.is_train:
-            targets = input_tensors.target_index
-        else:
-            targets = {'target_index': input_tensors.target_index, 'target_string': input_tensors.target_string}
-        if self.estimator_action.is_predict:
-            inputs += (input_tensors.path_source_token_strings, input_tensors.path_strings,
-                       input_tensors.path_target_token_strings)
-        return inputs, targets
-
-    def from_model_input_form(self, input_row) -> ReaderInputTensors:
-        inputs, targets = input_row
-        return ReaderInputTensors(
-            path_source_token_indices=inputs[0],
-            path_indices=inputs[1],
-            path_target_token_indices=inputs[2],
-            context_valid_mask=inputs[3],
-            target_index=targets if self.estimator_action.is_train else targets['target_index'],
-            target_string=targets['target_string'] if not self.estimator_action.is_train else None,
-            path_source_token_strings=inputs[4] if self.estimator_action.is_predict else None,
-            path_strings=inputs[5] if self.estimator_action.is_predict else None,
-            path_target_token_strings=inputs[6] if self.estimator_action.is_predict else None
-        )
-
-
-"""Used for convenient-and-clear access to raw prediction result parts (by their names)."""
-KerasPredictionModelOutput = namedtuple(
-    'KerasModelOutput', ['target_index', 'code_vectors', 'attention_weights',
-                         'topk_predicted_words', 'topk_predicted_words_scores'])
-
-
 class Code2VecModel(Code2VecModelBase):
     def __init__(self, config: Config):
         self.keras_train_model: Optional[keras.Model] = None
@@ -175,7 +83,8 @@ class Code2VecModel(Code2VecModelBase):
         # We use another dedicated Keras model for evaluation.
         # The evaluation model outputs the `topk_predicted_words` as a 2nd output.
         # The separation between train and eval models is for efficiency.
-        self.keras_eval_model = keras.Model(inputs=inputs, outputs=[target_index, topk_predicted_words])
+        self.keras_eval_model = keras.Model(
+            inputs=inputs, outputs=[target_index, topk_predicted_words], name="code2vec-keras-model")
 
         # We use another dedicated Keras function to produce predictions.
         # It have additional outputs than the original model.
@@ -327,7 +236,7 @@ class Code2VecModel(Code2VecModelBase):
     def _create_inner_model(self):
         self._create_keras_model()
         self._compile_keras_model()
-        self.keras_train_model.summary()
+        self.keras_train_model.summary(print_fn=self.log)
 
     def _load_inner_model(self):
         self._create_keras_model()
@@ -412,3 +321,95 @@ class Code2VecModel(Code2VecModelBase):
 
     def _initialize(self):
         self._create_lookup_tables()
+
+
+class ModelEvaluationCallback(MultiBatchCallback):
+    """
+    This callback is passed to the `model.fit()` call.
+    It is responsible to trigger model evaluation during the training.
+    The reason we use a callback and not just passing validation data to `model.fit()` is because:
+        (i)   the training model is different than the evaluation model for efficiency considerations;
+        (ii)  we want to control the logging format;
+        (iii) we want the evaluation to occur once per 1K batches (rather than only once per epoch).
+    """
+
+    def __init__(self, code2vec_model: 'Code2VecModel'):
+        self.code2vec_model = code2vec_model
+        self.avg_eval_duration: Optional[int] = None
+        super(ModelEvaluationCallback, self).__init__(self.code2vec_model.config.NUM_TRAIN_BATCHES_TO_EVALUATE)
+
+    def on_epoch_end(self, epoch, logs=None):
+        self.perform_evaluation()
+
+    def on_multi_batch_end(self, batch, logs, multi_batch_elapsed):
+        self.perform_evaluation()
+
+    def perform_evaluation(self):
+        if self.avg_eval_duration is None:
+            self.code2vec_model.log('Evaluating...')
+        else:
+            self.code2vec_model.log('Evaluating... (takes ~{})'.format(
+                str(datetime.timedelta(seconds=int(self.avg_eval_duration)))))
+        eval_start_time = time.time()
+        evaluation_results = self.code2vec_model.evaluate()
+        eval_duration = time.time() - eval_start_time
+        if self.avg_eval_duration is None:
+            self.avg_eval_duration = eval_duration
+        else:
+            self.avg_eval_duration = eval_duration * 0.5 + self.avg_eval_duration * 0.5
+        self.code2vec_model.log('Done evaluating (took {}). Evaluation results:'.format(
+            str(datetime.timedelta(seconds=int(eval_duration)))))
+
+        self.code2vec_model.log(
+            '    loss: {loss:.4f}, f1: {f1:.4f}, recall: {recall:.4f}, precision: {precision:.4f}'.format(
+                loss=evaluation_results.loss, f1=evaluation_results.subtoken_f1,
+                recall=evaluation_results.subtoken_recall, precision=evaluation_results.subtoken_precision))
+        top_k_acc_formated = ['top{}: {:.4f}'.format(i, acc) for i, acc in enumerate(evaluation_results.topk_acc, start=1)]
+        for top_k_acc_chunk in common.chunks(top_k_acc_formated, 5):
+            self.code2vec_model.log('    ' + (', '.join(top_k_acc_chunk)))
+
+
+class _KerasModelInputTensorsFormer(ModelInputTensorsFormer):
+    """
+    An instance of this class is passed to the reader in order to help the reader to construct the input
+        in the form that the model expects to receive it.
+    This class also enables conveniently & clearly access input parts by their field names.
+        eg: 'tensors.path_indices' instead if 'tensors[1]'.
+    This allows the input tensors to be passed as pure tuples along the computation graph, while the
+        python functions that construct the graph can easily (and clearly) access tensors.
+    """
+
+    def __init__(self, estimator_action: EstimatorAction):
+        self.estimator_action = estimator_action
+
+    def to_model_input_form(self, input_tensors: ReaderInputTensors):
+        inputs = (input_tensors.path_source_token_indices, input_tensors.path_indices,
+                  input_tensors.path_target_token_indices, input_tensors.context_valid_mask)
+        if self.estimator_action.is_train:
+            targets = input_tensors.target_index
+        else:
+            targets = {'target_index': input_tensors.target_index, 'target_string': input_tensors.target_string}
+        if self.estimator_action.is_predict:
+            inputs += (input_tensors.path_source_token_strings, input_tensors.path_strings,
+                       input_tensors.path_target_token_strings)
+        return inputs, targets
+
+    def from_model_input_form(self, input_row) -> ReaderInputTensors:
+        inputs, targets = input_row
+        return ReaderInputTensors(
+            path_source_token_indices=inputs[0],
+            path_indices=inputs[1],
+            path_target_token_indices=inputs[2],
+            context_valid_mask=inputs[3],
+            target_index=targets if self.estimator_action.is_train else targets['target_index'],
+            target_string=targets['target_string'] if not self.estimator_action.is_train else None,
+            path_source_token_strings=inputs[4] if self.estimator_action.is_predict else None,
+            path_strings=inputs[5] if self.estimator_action.is_predict else None,
+            path_target_token_strings=inputs[6] if self.estimator_action.is_predict else None
+        )
+
+
+"""Used for convenient-and-clear access to raw prediction result parts (by their names)."""
+KerasPredictionModelOutput = namedtuple(
+    'KerasModelOutput', ['target_index', 'code_vectors', 'attention_weights',
+                         'topk_predicted_words', 'topk_predicted_words_scores'])

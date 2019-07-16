@@ -15,41 +15,6 @@ from model_base import Code2VecModelBase, ModelEvaluationResults, ModelPredictio
 tf.compat.v1.disable_eager_execution()
 
 
-class _TFTrainModelInputTensorsFormer(ModelInputTensorsFormer):
-    def to_model_input_form(self, input_tensors: ReaderInputTensors):
-        return input_tensors.target_index, input_tensors.path_source_token_indices, input_tensors.path_indices, \
-               input_tensors.path_target_token_indices, input_tensors.context_valid_mask
-
-    def from_model_input_form(self, input_row) -> ReaderInputTensors:
-        return ReaderInputTensors(
-            target_index=input_row[0],
-            path_source_token_indices=input_row[1],
-            path_indices=input_row[2],
-            path_target_token_indices=input_row[3],
-            context_valid_mask=input_row[4]
-        )
-
-
-class _TFEvaluateModelInputTensorsFormer(ModelInputTensorsFormer):
-    def to_model_input_form(self, input_tensors: ReaderInputTensors):
-        return input_tensors.target_string, input_tensors.path_source_token_indices, input_tensors.path_indices, \
-               input_tensors.path_target_token_indices, input_tensors.context_valid_mask, \
-               input_tensors.path_source_token_strings, input_tensors.path_strings, \
-               input_tensors.path_target_token_strings
-
-    def from_model_input_form(self, input_row) -> ReaderInputTensors:
-        return ReaderInputTensors(
-            target_string=input_row[0],
-            path_source_token_indices=input_row[1],
-            path_indices=input_row[2],
-            path_target_token_indices=input_row[3],
-            context_valid_mask=input_row[4],
-            path_source_token_strings=input_row[5],
-            path_strings=input_row[6],
-            path_target_token_strings=input_row[7]
-        )
-
-
 class Code2VecModel(Code2VecModelBase):
     def __init__(self, config: Config):
         self.sess = tf.compat.v1.Session()
@@ -528,3 +493,38 @@ class TopKAccuracyEvaluationMetric:
     @property
     def topk_correct_predictions(self):
         return self.nr_correct_predictions / self.nr_predictions
+
+
+class _TFTrainModelInputTensorsFormer(ModelInputTensorsFormer):
+    def to_model_input_form(self, input_tensors: ReaderInputTensors):
+        return input_tensors.target_index, input_tensors.path_source_token_indices, input_tensors.path_indices, \
+               input_tensors.path_target_token_indices, input_tensors.context_valid_mask
+
+    def from_model_input_form(self, input_row) -> ReaderInputTensors:
+        return ReaderInputTensors(
+            target_index=input_row[0],
+            path_source_token_indices=input_row[1],
+            path_indices=input_row[2],
+            path_target_token_indices=input_row[3],
+            context_valid_mask=input_row[4]
+        )
+
+
+class _TFEvaluateModelInputTensorsFormer(ModelInputTensorsFormer):
+    def to_model_input_form(self, input_tensors: ReaderInputTensors):
+        return input_tensors.target_string, input_tensors.path_source_token_indices, input_tensors.path_indices, \
+               input_tensors.path_target_token_indices, input_tensors.context_valid_mask, \
+               input_tensors.path_source_token_strings, input_tensors.path_strings, \
+               input_tensors.path_target_token_strings
+
+    def from_model_input_form(self, input_row) -> ReaderInputTensors:
+        return ReaderInputTensors(
+            target_string=input_row[0],
+            path_source_token_indices=input_row[1],
+            path_indices=input_row[2],
+            path_target_token_indices=input_row[3],
+            context_valid_mask=input_row[4],
+            path_source_token_strings=input_row[5],
+            path_strings=input_row[6],
+            path_target_token_strings=input_row[7]
+        )
