@@ -73,7 +73,7 @@ class Code2VecModel(Code2VecModelBase):
         super(Code2VecModel, self).__init__(config)
 
     def train(self):
-        print('Starting training')
+        self.log('Starting training')
         start_time = time.time()
 
         batch_num = 0
@@ -91,10 +91,10 @@ class Code2VecModel(Code2VecModelBase):
         optimizer, train_loss = self._build_tf_training_graph(input_tensors)
         self.saver = tf.compat.v1.train.Saver(max_to_keep=self.config.MAX_TO_KEEP)
 
-        print('Number of trainable params:',
-            np.sum([np.prod(v.get_shape().as_list()) for v in tf.compat.v1.trainable_variables()]))
+        self.log('Number of trainable params: {}'.format(
+            np.sum([np.prod(v.get_shape().as_list()) for v in tf.compat.v1.trainable_variables()])))
         for variable in tf.compat.v1.trainable_variables():
-            print("variable name: {} -- shape: {} -- #params: {}".format(
+            self.log("variable name: {} -- shape: {} -- #params: {}".format(
                 variable.name, variable.get_shape(), np.prod(variable.get_shape().as_list())))
 
         self._initialize_session_variables()
@@ -104,7 +104,7 @@ class Code2VecModel(Code2VecModelBase):
 
         self.sess.run(input_iterator_reset_op)
         time.sleep(1)
-        print('Started reader...')
+        self.log('Started reader...')
         # run evaluation in a loop until iterator is exhausted.
         try:
             while True:
@@ -117,7 +117,7 @@ class Code2VecModel(Code2VecModelBase):
                 sum_loss += batch_loss
                 if batch_num % self.config.NUM_BATCHES_TO_LOG_PROGRESS == 0:
                     self._trace_training(sum_loss, batch_num, multi_batch_start_time)
-                    print('Number of waiting examples in queue: %d' % self.sess.run(
+                    self.log('Number of waiting examples in queue: %d' % self.sess.run(
                         "shuffle_batch/random_shuffle_queue_Size:0"))
                     sum_loss = 0
                     multi_batch_start_time = time.time()
@@ -125,25 +125,25 @@ class Code2VecModel(Code2VecModelBase):
                     epoch_num = int((batch_num / num_batches_to_save_and_eval) * self.config.SAVE_EVERY_EPOCHS)
                     save_path = self.config.MODEL_SAVE_PATH + '_iter' + str(epoch_num)
                     self._save_inner_model(save_path)
-                    print('Saved after %d epochs in: %s' % (epoch_num, save_path))
+                    self.log('Saved after %d epochs in: %s' % (epoch_num, save_path))
                     evaluation_results = self.evaluate()
                     evaluation_results_str = (str(evaluation_results).replace('topk', 'top{}'.format(
                         self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION)))
-                    print('After {nr_epochs} epochs -- {evaluation_results}'.format(
+                    self.log('After {nr_epochs} epochs -- {evaluation_results}'.format(
                         nr_epochs=epoch_num,
                         evaluation_results=evaluation_results_str
                     ))
         except tf.errors.OutOfRangeError:
             pass  # The reader iterator is exhausted and have no more batches to produce.
 
-        print('Done training')
+        self.log('Done training')
 
         if self.config.MODEL_SAVE_PATH:
             self._save_inner_model(self.config.MODEL_SAVE_PATH)
-            print('Model saved in file: %s' % self.config.MODEL_SAVE_PATH)
+            self.log('Model saved in file: %s' % self.config.MODEL_SAVE_PATH)
 
         elapsed = int(time.time() - start_time)
-        print("Training time: %sH:%sM:%sS\n" % ((elapsed // 60 // 60), (elapsed // 60) % 60, elapsed % 60))
+        self.log("Training time: %sH:%sM:%sS\n" % ((elapsed // 60 // 60), (elapsed // 60) % 60, elapsed % 60))
 
     def evaluate(self) -> Optional[ModelEvaluationResults]:
         eval_start_time = time.time()
@@ -164,7 +164,7 @@ class Code2VecModel(Code2VecModelBase):
             self._load_inner_model(self.sess)
             if self.config.RELEASE:
                 release_name = self.config.MODEL_LOAD_PATH + '.release'
-                print('Releasing model, output model: %s' % release_name)
+                self.log('Releasing model, output model: %s' % release_name)
                 self.saver.save(self.sess, release_name)
                 return None  # FIXME: why do we return none here?
 
@@ -181,6 +181,8 @@ class Code2VecModel(Code2VecModelBase):
             start_time = time.time()
 
             self.sess.run(self.eval_input_iterator_reset_op)
+
+            self.log('Starting evaluation')
 
             # Run evaluation in a loop until iterator is exhausted.
             # Each iteration = batch. We iterate as long as the tf iterator (reader) yields batches.
@@ -212,13 +214,13 @@ class Code2VecModel(Code2VecModelBase):
                         self._trace_evaluation(total_predictions, elapsed)
             except tf.errors.OutOfRangeError:
                 pass  # reader iterator is exhausted and have no more batches to produce.
-            print('Done testing, epoch reached')
+            self.log('Done evaluating, epoch reached')
             log_output_file.write(str(topk_accuracy_evaluation_metric.topk_correct_predictions) + '\n')
         if self.config.EXPORT_CODE_VECTORS:
             code_vectors_file.close()
         
         elapsed = int(time.time() - eval_start_time)
-        print("Evaluation time: %sH:%sM:%sS" % ((elapsed // 60 // 60), (elapsed // 60) % 60, elapsed % 60))
+        self.log("Evaluation time: %sH:%sM:%sS" % ((elapsed // 60 // 60), (elapsed // 60) % 60, elapsed % 60))
         return ModelEvaluationResults(
             topk_acc=topk_accuracy_evaluation_metric.topk_correct_predictions,
             subtoken_precision=subtokens_evaluation_metric.precision,
@@ -403,9 +405,9 @@ class Code2VecModel(Code2VecModelBase):
 
     def _load_inner_model(self, sess=None):
         if sess is not None:
-            print('Loading model weights from: ' + self.config.MODEL_LOAD_PATH)
+            self.log('Loading model weights from: ' + self.config.MODEL_LOAD_PATH)
             self.saver.restore(sess, self.config.MODEL_LOAD_PATH)
-            print('Done')
+            self.log('Done loading model weights')
 
     def _get_vocab_embedding_as_np_array(self, vocab_type: VocabType) -> np.ndarray:
         assert vocab_type in VocabType
@@ -441,16 +443,15 @@ class Code2VecModel(Code2VecModelBase):
         avg_loss = sum_loss / (self.config.NUM_BATCHES_TO_LOG_PROGRESS * self.config.TRAIN_BATCH_SIZE)
         throughput = self.config.TRAIN_BATCH_SIZE * self.config.NUM_BATCHES_TO_LOG_PROGRESS / \
                      (multi_batch_elapsed if multi_batch_elapsed > 0 else 1)
-        print('Average loss at batch %d: %f, \tthroughput: %d samples/sec' % (
+        self.log('Average loss at batch %d: %f, \tthroughput: %d samples/sec' % (
             batch_num, avg_loss, throughput))
 
-    @staticmethod
-    def _trace_evaluation(total_predictions, elapsed):
+    def _trace_evaluation(self, total_predictions, elapsed):
         state_message = 'Evaluated %d examples...' % total_predictions
         throughput_message = "Prediction throughput: %d samples/sec" % int(
             total_predictions / (elapsed if elapsed > 0 else 1))
-        print(state_message)
-        print(throughput_message)
+        self.log(state_message)
+        self.log(throughput_message)
 
     def close_session(self):
         self.sess.close()
@@ -460,7 +461,7 @@ class Code2VecModel(Code2VecModelBase):
             tf.compat.v1.global_variables_initializer(),
             tf.compat.v1.local_variables_initializer(),
             tf.compat.v1.tables_initializer()))
-        print('Initalized variables')
+        self.log('Initalized variables')
 
 
 class SubtokensEvaluationMetric:
