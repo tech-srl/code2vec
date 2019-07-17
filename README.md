@@ -18,7 +18,7 @@ and for experimenting with new ideas in machine learning for code tasks.
 By default, it learns Java source code and predicts Java method names, but it can be easily extended to other languages, 
 since the TensorFlow network is agnostic to the input programming language (see [Extending to other languages](#extending-to-other-languages).
 Contributions are welcome.
-This repo actually contains two model implementations. The 1st uses pure TensorFlow and the 2nd uses TensorFlow's Keras. 
+This repo actually contains two model implementations. The 1st uses pure TensorFlow and the 2nd uses TensorFlow's Keras ([more details](#choosing-implementation-to-use)). 
 
 <center style="padding: 40px"><img width="70%" src="https://github.com/tech-srl/code2vec/raw/master/images/network.png" /></center>
 
@@ -103,7 +103,7 @@ This model weights more than twice than the stripped version, and it is recommen
 To train a model from scratch:
   * Edit the file [train.sh](train.sh) to point it to the right preprocessed data. By default, 
   it points to our "java14m" dataset that was preprocessed in the previous step.
-  * Before training, you can edit the configuration hyper-parameters in the file [common.py](common.py),
+  * Before training, you can edit the configuration hyper-parameters in the file [config.py](config.py),
   as explained in [Configuration](#configuration).
   * Run the [train.sh](train.sh) script:
 ```
@@ -114,7 +114,7 @@ source train.sh
   1. By default, the network is evaluated on the validation set after every training epoch.
   2. The newest 10 versions are kept (older are deleted automatically). This can be changed, but will be more space consuming.
   3. By default, the network is training for 20 epochs.
-These settings can be changed by simply editing the file [common.py](common.py).
+These settings can be changed by simply editing the file [config.py](config.py).
 Training on a Tesla v100 GPU takes about 50 minutes per epoch. 
 Training on Tesla K80 takes about 4 hours per epoch.
 
@@ -137,7 +137,7 @@ method or code snippet, and examine the model's predictions and attention scores
 
 ## Configuration
 Changing hyper-parameters is possible by editing the file
-[common.py](common.py).
+[config.py](config.py).
 
 Here are some of the parameters and their description:
 #### config.NUM_TRAIN_EPOCHS = 20
