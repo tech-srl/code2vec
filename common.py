@@ -1,58 +1,13 @@
 import re
-import json
-import sys
-from enum import Enum
+import numpy as np
+import tensorflow as tf
+from itertools import takewhile, repeat
+from typing import List, Optional, Tuple, Iterable
+from datetime import datetime
+from collections import OrderedDict
 
-
-class Config:
-    @staticmethod
-    def get_default_config(args):
-        config = Config()
-        config.NUM_EPOCHS = 20
-        config.SAVE_EVERY_EPOCHS = 1
-        config.BATCH_SIZE = 1024
-        config.TEST_BATCH_SIZE = config.BATCH_SIZE
-        config.READING_BATCH_SIZE = 1300 * 4
-        config.NUM_BATCHING_THREADS = 2
-        config.BATCH_QUEUE_SIZE = 300000
-        config.MAX_CONTEXTS = 200
-        config.WORDS_VOCAB_SIZE = 1301136
-        config.TARGET_VOCAB_SIZE = 261245
-        config.PATHS_VOCAB_SIZE = 911417
-        config.EMBEDDINGS_SIZE = 128
-        config.MAX_TO_KEEP = 10
-        # Automatically filled, do not edit:
-        config.TRAIN_PATH = args.data_path
-        config.TEST_PATH = args.test_path
-        config.SAVE_PATH = args.save_path
-        config.LOAD_PATH = args.load_path
-        config.RELEASE = args.release
-        config.EXPORT_CODE_VECTORS = args.export_code_vectors
-        return config
-
-    def __init__(self):
-        self.NUM_EPOCHS = 0
-        self.SAVE_EVERY_EPOCHS = 0
-        self.BATCH_SIZE = 0
-        self.TEST_BATCH_SIZE = 0
-        self.READING_BATCH_SIZE = 0
-        self.NUM_BATCHING_THREADS = 0
-        self.BATCH_QUEUE_SIZE = 0
-        self.TRAIN_PATH = ''
-        self.TEST_PATH = ''
-        self.MAX_CONTEXTS = 0
-        self.WORDS_VOCAB_SIZE = 0
-        self.TARGET_VOCAB_SIZE = 0
-        self.PATHS_VOCAB_SIZE = 0
-        self.EMBEDDINGS_SIZE = 0
-        self.SAVE_PATH = ''
-        self.LOAD_PATH = ''
-        self.MAX_TO_KEEP = 0
-        self.RELEASE = False
-        self.EXPORT_CODE_VECTORS = False
 
 class common:
-    noSuchWord = "NoSuchWord"
 
     @staticmethod
     def normalize_word(word):
@@ -89,22 +44,6 @@ class common:
         return result
 
     @staticmethod
-    def _load_vocab_from_dict(word_to_count, min_count=0, start_from=0):
-        word_to_index = {}
-        index_to_word = {}
-        next_index = start_from
-        for word, count in word_to_count.items():
-            if count < min_count:
-                continue
-            if word in word_to_index:
-                continue
-            word_to_index[word] = next_index
-            index_to_word[next_index] = word
-            word_to_count[word] = count
-            next_index += 1
-        return word_to_index, index_to_word, next_index - start_from
-
-    @staticmethod
     def load_vocab_from_histogram(path, min_count=0, start_from=0, max_size=None, return_counts=False):
         if max_size is not None:
             word_to_index, index_to_word, next_index, word_to_count = \
@@ -117,15 +56,6 @@ class common:
             # Take min_count to be one plus the count of the max_size'th word
             min_count = sorted(word_to_count.values(), reverse=True)[max_size] + 1
         return common._load_vocab_from_histogram(path, min_count, start_from, return_counts)
-
-    @staticmethod
-    def load_vocab_from_dict(word_to_count, max_size=None, start_from=0):
-        if max_size is not None:
-            if max_size > len(word_to_count):
-                min_count = 0
-            else:
-                min_count = sorted(word_to_count.values(), reverse=True)[max_size] + 1
-        return common._load_vocab_from_dict(word_to_count, min_count, start_from)
 
     @staticmethod
     def load_json(json_file):
@@ -150,12 +80,15 @@ class common:
                     yield (element, scope)
 
     @staticmethod
-    def save_word2vec_file(file, vocab_size, dimension, index_to_word, vectors):
-        file.write('%d %d\n' % (vocab_size, dimension))
-        for i in range(1, vocab_size + 1):
-            if i in index_to_word:
-                file.write(index_to_word[i] + ' ')
-                file.write(' '.join(map(str, vectors[i])) + '\n')
+    def save_word2vec_file(output_file, index_to_word, vocab_embedding_matrix: np.ndarray):
+        assert len(vocab_embedding_matrix.shape) == 2
+        vocab_size, embedding_dimension = vocab_embedding_matrix.shape
+        output_file.write('%d %d\n' % (vocab_size, embedding_dimension))
+        for word_idx in range(0, vocab_size):
+            assert word_idx in index_to_word
+            word_str = index_to_word[word_idx]
+            output_file.write(word_str + ' ')
+            output_file.write(' '.join(map(str, vocab_embedding_matrix[word_idx])) + '\n')
 
     @staticmethod
     def calculate_max_contexts(file):
@@ -183,15 +116,16 @@ class common:
 
     @staticmethod
     def split_to_batches(data_lines, batch_size):
-        return [data_lines[x:x + batch_size] for x in range(0, len(data_lines), batch_size)]
+        for x in range(0, len(data_lines), batch_size):
+            yield data_lines[x:x + batch_size]
 
     @staticmethod
-    def legal_method_names_checker(name):
-        return name != common.noSuchWord and re.match('^[a-zA-Z\|]+$', name)
+    def legal_method_names_checker(special_words, name):
+        return name != special_words.OOV and re.match(r'^[a-zA-Z|]+$', name)
 
     @staticmethod
-    def filter_impossible_names(top_words):
-        result = list(filter(common.legal_method_names_checker, top_words))
+    def filter_impossible_names(special_words, top_words):
+        result = list(filter(lambda word: common.legal_method_names_checker(special_words, word), top_words))
         return result
 
     @staticmethod
@@ -199,19 +133,22 @@ class common:
         return str.split('|')
 
     @staticmethod
-    def parse_results(result, unhash_dict, topk=5):
+    def parse_prediction_results(raw_prediction_results, unhash_dict, special_words, topk: int = 5) -> List['MethodPredictionResults']:
         prediction_results = []
-        for single_method in result:
-            original_name, top_suggestions, top_scores, attention_per_context = list(single_method)
-            current_method_prediction_results = PredictionResults(original_name)
-            for i, predicted in enumerate(top_suggestions):
-                if predicted == common.noSuchWord:
+        for single_method_prediction in raw_prediction_results:
+            current_method_prediction_results = MethodPredictionResults(single_method_prediction.original_name)
+            for i, predicted in enumerate(single_method_prediction.topk_predicted_words):
+                if predicted == special_words.OOV:
                     continue
                 suggestion_subtokens = common.get_subtokens(predicted)
-                current_method_prediction_results.append_prediction(suggestion_subtokens, top_scores[i].item())
-            for context, attention in [(key, attention_per_context[key]) for key in
-                                       sorted(attention_per_context, key=attention_per_context.get, reverse=True)][
-                                      :topk]:
+                current_method_prediction_results.append_prediction(
+                    suggestion_subtokens, single_method_prediction.topk_predicted_words_scores[i].item())
+            topk_attention_per_context = [
+                (key, single_method_prediction.attention_per_context[key])
+                for key in sorted(single_method_prediction.attention_per_context,
+                                  key=single_method_prediction.attention_per_context.get, reverse=True)
+            ][:topk]
+            for context, attention in topk_attention_per_context:
                 token1, hashed_path, token2 = context
                 if hashed_path in unhash_dict:
                     unhashed_path = unhash_dict[hashed_path]
@@ -220,8 +157,51 @@ class common:
             prediction_results.append(current_method_prediction_results)
         return prediction_results
 
+    @staticmethod
+    def tf_get_first_true(bool_tensor: tf.Tensor) -> tf.Tensor:
+        bool_tensor_as_int32 = tf.cast(bool_tensor, dtype=tf.int32)
+        cumsum = tf.cumsum(bool_tensor_as_int32, axis=-1, exclusive=False)
+        return tf.logical_and(tf.equal(cumsum, 1), bool_tensor)
 
-class PredictionResults:
+    @staticmethod
+    def count_lines_in_file(file_path: str):
+        with open(file_path, 'rb') as f:
+            bufgen = takewhile(lambda x: x, (f.raw.read(1024 * 1024) for _ in repeat(None)))
+            return sum(buf.count(b'\n') for buf in bufgen)
+
+    @staticmethod
+    def squeeze_single_batch_dimension_for_np_arrays(arrays):
+        assert all(array is None or isinstance(array, np.ndarray) or isinstance(array, tf.Tensor) for array in arrays)
+        return tuple(
+            None if array is None else np.squeeze(array, axis=0)
+            for array in arrays
+        )
+
+    @staticmethod
+    def get_first_match_word_from_top_predictions(special_words, original_name, top_predicted_words) -> Optional[Tuple[int, str]]:
+        normalized_original_name = common.normalize_word(original_name)
+        for suggestion_idx, predicted_word in enumerate(common.filter_impossible_names(special_words, top_predicted_words)):
+            normalized_possible_suggestion = common.normalize_word(predicted_word)
+            if normalized_original_name == normalized_possible_suggestion:
+                return suggestion_idx, predicted_word
+        return None
+
+    @staticmethod
+    def now_str():
+        return datetime.now().strftime("%Y%m%d-%H%M%S: ")
+
+    @staticmethod
+    def chunks(l, n):
+        """Yield successive n-sized chunks from l."""
+        for i in range(0, len(l), n):
+            yield l[i:i + n]
+
+    @staticmethod
+    def get_unique_list(lst: Iterable) -> list:
+        return list(OrderedDict(((item, 0) for item in lst)).keys())
+
+
+class MethodPredictionResults:
     def __init__(self, original_name):
         self.original_name = original_name
         self.predictions = list()
@@ -235,8 +215,3 @@ class PredictionResults:
                                      'path': path,
                                      'token1': token1,
                                      'token2': token2})
-
-
-class VocabType(Enum):
-    Token = 1
-    Target = 2

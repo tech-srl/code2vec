@@ -40,9 +40,11 @@ class InteractivePredictor:
             except ValueError as e:
                 print(e)
                 continue
-            results, code_vectors = self.model.predict(predict_lines)
-            prediction_results = common.parse_results(results, hash_to_string_dict, topk=SHOW_TOP_CONTEXTS)
-            for i, method_prediction in enumerate(prediction_results):
+            raw_prediction_results = self.model.predict(predict_lines)
+            method_prediction_results = common.parse_prediction_results(
+                raw_prediction_results, hash_to_string_dict,
+                self.model.vocabs.target_vocab.special_words, topk=SHOW_TOP_CONTEXTS)
+            for raw_prediction, method_prediction in zip(raw_prediction_results, method_prediction_results):
                 print('Original name:\t' + method_prediction.original_name)
                 for name_prob_pair in method_prediction.predictions:
                     print('\t(%f) predicted: %s' % (name_prob_pair['probability'], name_prob_pair['name']))
@@ -52,4 +54,4 @@ class InteractivePredictor:
                     attention_obj['score'], attention_obj['token1'], attention_obj['path'], attention_obj['token2']))
                 if self.config.EXPORT_CODE_VECTORS:
                     print('Code vector:')
-                    print(' '.join(map(str, code_vectors[i])))
+                    print(' '.join(map(str, raw_prediction.code_vector)))

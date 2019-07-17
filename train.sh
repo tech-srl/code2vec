@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 ###########################################################
 # Change the following values to train a new model.
 # type: the name of the new model, only affects the saved file name.
