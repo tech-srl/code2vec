@@ -2,6 +2,7 @@ from math import ceil
 from typing import Optional
 import logging
 from argparse import ArgumentParser
+import sys
 
 
 class Config:
@@ -247,18 +248,16 @@ class Config:
             self.__logger.setLevel(logging.INFO)
             self.__logger.handlers = []
             self.__logger.propagate = 0
-            ch = logging.StreamHandler()
-            ch.setLevel(logging.INFO)
+
             formatter = logging.Formatter('%(asctime)s %(levelname)-8s %(message)s')
-            ch.setFormatter(formatter)
-            self.__logger.addHandler(ch)
+
+            if self.VERBOSE_MODE >= 1:
+                ch = logging.StreamHandler(sys.stdout)
+                ch.setLevel(logging.INFO)
+                ch.setFormatter(formatter)
+                self.__logger.addHandler(ch)
+
             if self.LOGS_PATH:
-                # logging.basicConfig(
-                #     filename=self.LOGS_PATH,
-                #     level=logging.INFO,
-                #     format='%(asctime)s %(levelname)-8s %(message)s',
-                #     datefmt='%Y-%m-%d %H:%M:%S'
-                # )
                 fh = logging.FileHandler(self.LOGS_PATH)
                 fh.setLevel(logging.INFO)
                 fh.setFormatter(formatter)
