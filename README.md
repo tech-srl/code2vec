@@ -210,8 +210,11 @@ This will save a copy of the trained model with the '.release' suffix.
 A "released" model usually takes 3x less disk space.
 
 ### Exporting the trained token vectors and target vectors
-Token and target embeddings are available to download [here](http://urialon.cswp.cs.technion.ac.il/publications/).
-The saved embeddings there are saved without subtoken-delimiters ("*toLower*" is saved as "*tolower*").
+Token and target embeddings are available to download: 
+
+[[Token vectors]](https://s3.amazonaws.com/code2vec/model/token_vecs.tar.gz) [[Method name vectors]](https://s3.amazonaws.com/code2vec/model/target_vecs.tar.gz)
+
+These saved embeddings are saved without subtoken-delimiters ("*toLower*" is saved as "*tolower*").
 
 In order to export embeddings from a trained model, use the "--save_w2v" and "--save_t2v" flags:
 
@@ -250,7 +253,14 @@ If used with the `--predict` flag, the code vector will be printed to console.
 
 
 ## Extending to other languages  
-In order to extend code2vec to work with other languages other than Java, a new extractor (similar to the [JavaExtractor](JavaExtractor))
+
+This project currently supports Java and C\# as the input languages.
+
+_**June 2019** - an extractor for **C** that is compatible with our model was developed by [CMU SEI team](https://github.com/cmu-sei/code2vec-c)._
+
+_**June 2019** - an extractor for **Python** is available here: [PathMiner](https://github.com/vovak/astminer)._
+
+In order to extend code2vec to work with other languages, a new extractor (similar to the [JavaExtractor](JavaExtractor))
 should be implemented, and be called by [preprocess.sh](preprocess.sh).
 Basically, an extractor should be able to output for each directory containing source files:
   * A single text file, where each row is an example.
