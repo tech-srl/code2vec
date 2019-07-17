@@ -20,9 +20,6 @@ since the TensorFlow network is agnostic to the input programming language (see 
 Contributions are welcome.
 This repo actually contains two model implementations. The 1st uses pure TensorFlow and the 2nd uses TensorFlow's Keras. 
 
-The [master](/tech-srl/code2vec/tree/master) branch contains further work that may be not fully compatible with the paper version.
-For the original paper version visit the [paper-version](/tech-srl/code2vec/tree/paper-version) branch.
-
 <center style="padding: 40px"><img width="70%" src="https://github.com/tech-srl/code2vec/raw/master/images/network.png" /></center>
 
 Table of Contents
