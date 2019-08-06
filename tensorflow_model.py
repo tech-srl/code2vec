@@ -82,8 +82,9 @@ class Code2VecModel(Code2VecModelBase):
                 sum_loss += batch_loss
                 if batch_num % self.config.NUM_BATCHES_TO_LOG_PROGRESS == 0:
                     self._trace_training(sum_loss, batch_num, multi_batch_start_time)
-                    self.log('Number of waiting examples in queue: %d' % self.sess.run(
-                        "shuffle_batch/random_shuffle_queue_Size:0"))
+                    # Uri: the "shuffle_batch/random_shuffle_queue_Size:0" op does not exist since the migration to the new reader.
+                    # self.log('Number of waiting examples in queue: %d' % self.sess.run(
+                    #    "shuffle_batch/random_shuffle_queue_Size:0"))
                     sum_loss = 0
                     multi_batch_start_time = time.time()
                 if batch_num % num_batches_to_save_and_eval == 0:
