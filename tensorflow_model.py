@@ -89,9 +89,9 @@ class Code2VecModel(Code2VecModelBase):
                     multi_batch_start_time = time.time()
                 if batch_num % num_batches_to_save_and_eval == 0:
                     epoch_num = int((batch_num / num_batches_to_save_and_eval) * self.config.SAVE_EVERY_EPOCHS)
-                    save_path = self.config.MODEL_SAVE_PATH + '_iter' + str(epoch_num)
-                    self._save_inner_model(save_path)
-                    self.log('Saved after %d epochs in: %s' % (epoch_num, save_path))
+                    model_save_path = self.config.MODEL_SAVE_PATH + '_iter' + str(epoch_num)
+                    self.save(model_save_path)
+                    self.log('Saved after %d epochs in: %s' % (epoch_num, model_save_path))
                     evaluation_results = self.evaluate()
                     evaluation_results_str = (str(evaluation_results).replace('topk', 'top{}'.format(
                         self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION)))
