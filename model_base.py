@@ -103,7 +103,7 @@ class Code2VecModelBase(abc.ABC):
             model_save_path = self.config.MODEL_SAVE_PATH
         model_save_dir = '/'.join(model_save_path.split('/')[:-1])
         if not os.path.isdir(model_save_dir):
-            os.mkdir(model_save_dir)
+            os.makedirs(model_save_dir, exist_ok=True)
         self.vocabs.save(self.config.get_vocabularies_path_from_model_path(model_save_path))
         self._save_inner_model(model_save_path)
 
