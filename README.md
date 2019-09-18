@@ -94,7 +94,7 @@ A non-stripped trained model can be obtained [here](https://s3.amazonaws.com/cod
 
 ```
 wget https://s3.amazonaws.com/code2vec/model/java14m_model_trainable.tar.gz
-tar -xvzf trained_model.tar
+tar -xvzf java14m_model_trainable.tar
 ```  
 
 This model weights more than twice than the stripped version, and it is recommended only if you wish to continue training a model which is already trained. To continue training this trained model, use the `--load` flag to load the trained model; the `--data` flag to point to the new dataset to train on; and the `--save` flag to provide a new save path.
