@@ -3,6 +3,7 @@ from typing import Optional
 import logging
 from argparse import ArgumentParser
 import sys
+import os
 
 
 class Config:
@@ -201,6 +202,10 @@ class Config:
         return model_path + '__only-weights'
 
     @property
+    def model_load_dir(self):
+        return '/'.join(self.MODEL_LOAD_PATH.split('/')[:-1])
+
+    @property
     def entire_model_load_path(self) -> Optional[str]:
         if not self.is_loading:
             return None
@@ -227,6 +232,9 @@ class Config:
     def verify(self):
         if not self.is_training and not self.is_loading:
             raise ValueError("Must train or load a model.")
+        if self.is_loading and not os.path.isdir(self.model_load_dir):
+            raise ValueError("Model load dir `{model_load_dir}` does not exist.".format(
+                model_load_dir=self.model_load_dir))
         if self.DL_FRAMEWORK not in {'tensorflow', 'keras'}:
             raise ValueError("config.DL_FRAMEWORK must be in {'tensorflow', 'keras'}.")
 

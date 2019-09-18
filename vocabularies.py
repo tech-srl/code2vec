@@ -161,15 +161,16 @@ class Code2VecVocabs:
         self._load_or_create()
 
     def _load_or_create(self):
-        vocabularies_load_path = None
-        if not self.config.is_training or self.config.is_loading:
+        assert self.config.is_training or self.config.is_loading
+        if self.config.is_loading:
             vocabularies_load_path = self.config.get_vocabularies_path_from_model_path(self.config.MODEL_LOAD_PATH)
             if not os.path.isfile(vocabularies_load_path):
-                vocabularies_load_path = None
-        if vocabularies_load_path is None:
-            self._create_from_word_freq_dict()
-        else:
+                raise ValueError(
+                    "Model dictionaries file is not found in model load dir. "
+                    "Expecting file `{vocabularies_load_path}`.".format(vocabularies_load_path=vocabularies_load_path))
             self._load_from_path(vocabularies_load_path)
+        else:
+            self._create_from_word_freq_dict()
 
     def _load_from_path(self, vocabularies_load_path: str):
         assert os.path.exists(vocabularies_load_path)
@@ -217,6 +218,7 @@ class Code2VecVocabs:
         self._already_saved_in_paths.add(vocabularies_save_path)
 
     def _load_word_freq_dict(self) -> Code2VecWordFreqDicts:
+        assert self.config.is_training
         self.config.log('Loading word frequencies dictionaries from: %s ... ' % self.config.word_freq_dict_path)
         with open(self.config.word_freq_dict_path, 'rb') as file:
             token_to_count = pickle.load(file)
