@@ -284,7 +284,7 @@ and the 2nd component ("FIELD_ACCESS") is taken from a separate "paths" vocabula
 
 ## Additional datasets
 We preprocessed additional three datasets used by the [code2seq](https://arxiv.org/pdf/1808.01400) paper, using the code2vec preprocessing.
-These datasets are available in raw format (i.e., .java files) at [http://urialon.cswp.cs.technion.ac.il/publications/](http://urialon.cswp.cs.technion.ac.il/publications/),
+These datasets are available in raw format (i.e., .java files) at [https://github.com/tech-srl/code2seq/blob/master/README.md#datasets](https://github.com/tech-srl/code2seq/blob/master/README.md#datasets),
 and are also available to download in a preprocessed format (i.e., ready to train a code2vec model on) here:
 
 ### Java-small (compressed: 366MB, extracted 1.9GB)
