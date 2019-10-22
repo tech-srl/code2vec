@@ -153,9 +153,9 @@ class PathContextReader:
     def _filter_input_rows(self, *row_parts) -> tf.bool:
         row_parts = self.model_input_tensors_former.from_model_input_form(row_parts)
 
-        assert all(tensor.shape == (self.config.MAX_CONTEXTS,) for tensor in
-                   {row_parts.path_source_token_indices, row_parts.path_indices,
-                    row_parts.path_target_token_indices, row_parts.context_valid_mask})
+        #assert all(tensor.shape == (self.config.MAX_CONTEXTS,) for tensor in
+        #           {row_parts.path_source_token_indices, row_parts.path_indices,
+        #            row_parts.path_target_token_indices, row_parts.context_valid_mask})
 
         # FIXME: Does "valid" here mean just "no padding" or "neither padding nor OOV"? I assumed just "no padding".
         any_word_valid_mask_per_context_part = [
@@ -213,8 +213,7 @@ class PathContextReader:
             tf.not_equal(path_indices, self.vocabs.path_vocab.word_to_index[self.vocabs.path_vocab.special_words.PAD])]  # [(max_contexts, )]
         context_valid_mask = tf.cast(reduce(tf.logical_or, valid_word_mask_per_context_part), dtype=tf.float32)  # (max_contexts, )
 
-        assert all(tensor.shape == (self.config.MAX_CONTEXTS,) for tensor in
-                   {path_source_token_indices, path_indices, path_target_token_indices, context_valid_mask})
+        #assert all(tensor.shape == (self.config.MAX_CONTEXTS,) for tensor in {path_source_token_indices, path_indices, path_target_token_indices, context_valid_mask})
 
         return ReaderInputTensors(
             path_source_token_indices=path_source_token_indices,

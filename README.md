@@ -123,14 +123,14 @@ Once the score on the validation set stops improving over time, you can stop the
 and pick the iteration that performed the best on the validation set.
 Suppose that iteration #8 is our chosen model, run:
 ```
-python3 code2vec.py --load models/java14_model/saved_model_iter8 --test data/java14m/java14m.test.c2v
+python3 code2vec.py --load models/java14_model/saved_model_iter8.release --test data/java14m/java14m.test.c2v
 ```
 While evaluating, a file named "log.txt" is written with each test example name and the model's prediction.
 
 ### Step 4: Manual examination of a trained model
 To manually examine a trained model, run:
 ```
-python3 code2vec.py --load models/java14_model/saved_model_iter8 --predict
+python3 code2vec.py --load models/java14_model/saved_model_iter8.release --predict
 ```
 After the model loads, follow the instructions and edit the file [Input.java](Input.java) and enter a Java 
 method or code snippet, and examine the model's predictions and attention scores.
@@ -220,11 +220,11 @@ In order to export embeddings from a trained model, use the "--save_w2v" and "--
 
 Exporting the trained *token* embeddings:
 ```
-python3 code2vec.py --load models/java14_model/saved_model_iter8 --save_w2v models/java14_model/tokens.txt
+python3 code2vec.py --load models/java14_model/saved_model_iter8.release --save_w2v models/java14_model/tokens.txt
 ```
 Exporting the trained *target* (method name) embeddings:
 ```
-python3 code2vec.py --load models/java14_model/saved_model_iter8 --save_t2v models/java14_model/targets.txt
+python3 code2vec.py --load models/java14_model/saved_model_iter8.release --save_t2v models/java14_model/targets.txt
 ```
 This saves the tokens/targets embedding matrices in word2vec format to the specified text file, in which:
 the first line is: \<vocab_size\> \<dimension\>
