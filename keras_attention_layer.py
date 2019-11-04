@@ -1,7 +1,7 @@
 import tensorflow as tf
 from tensorflow.python import keras
 from tensorflow.python.keras.layers import Layer
-import tensorflow.python.keras.backend as K
+from tensorflow.python.keras import backend as K
 from typing import Optional
 
 
