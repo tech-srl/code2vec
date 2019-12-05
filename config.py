@@ -171,6 +171,8 @@ class Config:
         return ceil(self.NUM_TEST_EXAMPLES / self.TEST_BATCH_SIZE) if self.TEST_BATCH_SIZE else 0
 
     def data_path(self, is_evaluating: bool = False):
+        if self.RELEASE:
+            return ''
         return self.TEST_DATA_PATH if is_evaluating else self.train_data_path
 
     def batch_size(self, is_evaluating: bool = False):
