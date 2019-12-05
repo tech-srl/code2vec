@@ -27,7 +27,7 @@ if __name__ == '__main__':
     if config.SAVE_T2V is not None:
         model.save_word2vec_format(config.SAVE_T2V, VocabType.Target)
         config.log('Target word vectors saved in word2vec text format in: %s' % config.SAVE_T2V)
-    if config.is_testing and not config.is_training:
+    if (config.is_testing and not config.is_training) or config.RELEASE:
         eval_results = model.evaluate()
         if eval_results is not None:
             config.log(

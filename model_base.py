@@ -41,7 +41,8 @@ class Code2VecModelBase(abc.ABC):
 
         self._log_creating_model()
 
-        self._init_num_of_examples()
+        if not config.RELEASE:
+            self._init_num_of_examples()
         self._log_model_configuration()
         self.vocabs = Code2VecVocabs(config)
         self.vocabs.target_vocab.get_index_to_word_lookup_table()  # just to initialize it (if not already initialized)
@@ -53,7 +54,7 @@ class Code2VecModelBase(abc.ABC):
         self.log('')
         self.log('---------------------------------------------------------------------')
         self.log('---------------------------------------------------------------------')
-        self.log('---------------------- Creating word2vec model ----------------------')
+        self.log('---------------------- Creating code2vec model ----------------------')
         self.log('---------------------------------------------------------------------')
         self.log('---------------------------------------------------------------------')
 
