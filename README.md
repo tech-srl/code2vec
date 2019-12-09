@@ -13,6 +13,12 @@ _**July 2019** - Add `tf.keras` model implementation (see [here](#choosing-imple
 
 An **online demo** is available at [https://code2vec.org/](https://code2vec.org/).
 
+## See also:
+  * **code2seq** (ICLR'2019) is our newer model. It uses LSTMs to encode paths node-by-node (rather than monolithic path embeddings as in code2vec), and an LSTM to decode a target sequence (rather than predicting a single label at a time as in code2vec). See [PDF](https://openreview.net/pdf?id=H1gKYo09tX), demo at [http://www.code2seq.org](http://www.code2seq.org) and [code](https://github.com/tech-srl/code2seq/).
+  * **Structural Language Models for Any-Code Generation** is a new paper that learns to generate the missing code within a larger code snippet. This is similar to code completion, but is able to predict complex expressions rather than a single token at a time. See [PDF](https://arxiv.org/pdf/1910.00577.pdf) (demo: soon).
+  * **Adversarial Examples for Models of Code** is a new paper that shows how to slightly mutate the input code snippet of code2vec and GNNs models (thus, introducing adversarial examples), such that the model (code2vec or GNNs) will output a prediction of our choice. See [PDF](https://arxiv.org/pdf/1910.07517.pdf) (code: soon).
+  * **Neural Reverse Engineering of Stripped Binaries** is a new paper that learns to predict procedure names in stripped binaries, thus use neural networks for reverse engineering. See [PDF](https://arxiv.org/pdf/1902.09122) (code: soon).
+
 This is a TensorFlow implementation, designed to be easy and useful in research, 
 and for experimenting with new ideas in machine learning for code tasks.
 By default, it learns Java source code and predicts Java method names, but it can be easily extended to other languages, 
@@ -36,7 +42,7 @@ Table of Contents
 On Ubuntu:
   * [Python3](https://www.linuxbabe.com/ubuntu/install-python-3-6-ubuntu-16-04-16-10-17-04). To check if you have it:
 > python3 --version
-  * TensorFlow - version 2.0.0-beta1 ([install](https://www.tensorflow.org/install/install_linux)).
+  * TensorFlow - version 2.0.0 ([install](https://www.tensorflow.org/install/install_linux)).
   To check TensorFlow version:
 > python3 -c 'import tensorflow as tf; print(tf.\_\_version\_\_)'
   * If you are using a GPU, you will need CUDA 10.0
