@@ -262,6 +262,9 @@ If used with the `--predict` flag, the code vector will be printed to console.
 
 This project currently supports Java and C\# as the input languages.
 
+_**January 2020** - an extractor for predicting TypeScript type annotations for JavaScript input using code2vec was developed by [@izosak](https://github.com/izosak) and Noa Cohen, and is available here:
+[https://github.com/tech-srl/id2vec](https://github.com/tech-srl/id2vec)._
+
 ~~_**June 2019** - an extractor for **C** that is compatible with our model was developed by [CMU SEI team](https://github.com/cmu-sei/code2vec-c)._~~ - removed by CMU SEI team.
 
 _**June 2019** - an extractor for **Python, Java, C, C++** is available here: [PathMiner](https://github.com/vovak/astminer)._
