@@ -40,7 +40,7 @@ Table of Contents
 
 ## Requirements
 On Ubuntu:
-  * [Python3](https://www.linuxbabe.com/ubuntu/install-python-3-6-ubuntu-16-04-16-10-17-04). To check if you have it:
+  * [Python3](https://www.linuxbabe.com/ubuntu/install-python-3-6-ubuntu-16-04-16-10-17-04) (>=3.6). To check the version:
 > python3 --version
   * TensorFlow - version 2.0.0 ([install](https://www.tensorflow.org/install/install_linux)).
   To check TensorFlow version:
