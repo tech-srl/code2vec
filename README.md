@@ -105,6 +105,9 @@ tar -xvzf java14m_model_trainable.tar
 
 This model weights more than twice than the stripped version, and it is recommended only if you wish to continue training a model which is already trained. To continue training this trained model, use the `--load` flag to load the trained model; the `--data` flag to point to the new dataset to train on; and the `--save` flag to provide a new save path.
 
+#### A model that was trained on the Java-large dataset
+We provide an additional code2vec model that was trained on the "Java-large" dataset (this dataset was introduced in the code2seq paper). See [Java-large](#java-large-compressed-72gb-extracted-37gb)
+
 #### Training a model from scratch
 To train a model from scratch:
   * Edit the file [train.sh](train.sh) to point it to the right preprocessed data. By default, 
@@ -317,6 +320,17 @@ wget https://s3.amazonaws.com/code2vec/data/java-large_data.tar.gz
 A dataset of the 9500 top-starred Java projects from GitHub that were created
 since January 2007. It contains 9000 projects for training, 200 for validation and 300 for
 testing. Overall, it contains about 16M examples.
+
+Additionally, we provide a trained code2vec model that was trained on the Java-large dataset (this model was not part of the original code2vec paper, but was later used as a baseline in the code2seq paper which introduced this dataset).
+Trainable model (3.5 GB):
+```
+wget https://code2vec.s3.amazonaws.com/model/java-large-model.tar.gz
+```
+
+"Released model" (1.4 GB, cannot be further trained).
+```
+wget https://code2vec.s3.amazonaws.com/model/java-large-released-model.tar.gz
+```
 
 ## Citation
 
