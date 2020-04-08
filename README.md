@@ -265,6 +265,10 @@ If used with the `--predict` flag, the code vector will be printed to console.
 
 This project currently supports Java and C\# as the input languages.
 
+_**April 2020** - an extension for code2vec that addresses obfuscated Java code was developed by [@basedrhys](https://github.com/basedrhys), and is available here:
+[https://github.com/basedrhys/obfuscated-code2vec](https://github.com/basedrhys/obfuscated-code2vec)._
+
+
 _**January 2020** - an extractor for predicting TypeScript type annotations for JavaScript input using code2vec was developed by [@izosak](https://github.com/izosak) and Noa Cohen, and is available here:
 [https://github.com/tech-srl/id2vec](https://github.com/tech-srl/id2vec)._
 
