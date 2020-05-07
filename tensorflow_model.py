@@ -529,10 +529,10 @@ class _TFTrainModelInputTensorsFormer(ModelInputTensorsFormer):
 
 class _TFEvaluateModelInputTensorsFormer(ModelInputTensorsFormer):
     def to_model_input_form(self, input_tensors: ReaderInputTensors):
-        return input_tensors.target_string, input_tensors.path_source_token_indices, input_tensors.path_indices, \
-               input_tensors.path_target_token_indices, input_tensors.context_valid_mask, \
-               input_tensors.path_source_token_strings, input_tensors.path_strings, \
-               input_tensors.path_target_token_strings
+        return (input_tensors.target_string, input_tensors.path_source_token_indices, input_tensors.path_indices,
+                input_tensors.path_target_token_indices, input_tensors.context_valid_mask,
+                input_tensors.path_source_token_strings, input_tensors.path_strings,
+                input_tensors.path_target_token_strings)
 
     def from_model_input_form(self, input_row) -> ReaderInputTensors:
         return ReaderInputTensors(
