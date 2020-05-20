@@ -123,7 +123,8 @@ class Code2VecModel(Code2VecModelBase):
 
             self.eval_top_words_op, self.eval_top_values_op, self.eval_original_names_op, _, _, _, _, \
                 self.eval_code_vectors = self._build_tf_test_graph(input_tensors)
-            self.saver = tf.compat.v1.train.Saver()
+            if self.saver is None:
+                self.saver = tf.compat.v1.train.Saver()
 
         if self.config.MODEL_LOAD_PATH and not self.config.TRAIN_DATA_PATH_PREFIX:
             self._initialize_session_variables()
