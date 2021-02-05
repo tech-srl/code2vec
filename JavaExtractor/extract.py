@@ -11,9 +11,6 @@ import sys
 from argparse import ArgumentParser
 from subprocess import Popen, PIPE, STDOUT, call
 
-from pprint import pprint
-
-
 
 def get_immediate_subdirectories(a_dir):
     return [(os.path.join(a_dir, name)) for name in os.listdir(a_dir)
