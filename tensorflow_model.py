@@ -308,7 +308,7 @@ class Code2VecModel(Code2VecModelBase):
         return top_words, top_scores, original_words, attention_weights, input_tensors.path_source_token_strings, \
                input_tensors.path_strings, input_tensors.path_target_token_strings, code_vectors
 
-    def predict(self, predict_data_lines: Iterable[str]) -> List[ModelPredictionResults]:
+    def prepare(self):
         if self.predict_reader is None:
             self.predict_reader = PathContextReader(vocabs=self.vocabs,
                                                     model_input_tensors_former=_TFEvaluateModelInputTensorsFormer(),
@@ -324,7 +324,8 @@ class Code2VecModel(Code2VecModelBase):
             self._initialize_session_variables()
             self.saver = tf.compat.v1.train.Saver()
             self._load_inner_model(sess=self.sess)
-
+        
+    def predict(self, predict_data_lines: Iterable[str]) -> List[ModelPredictionResults]:
         prediction_results: List[ModelPredictionResults] = []
         for line in predict_data_lines:
             batch_top_words, batch_top_scores, batch_original_name, batch_attention_weights, batch_path_source_strings,\

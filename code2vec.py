@@ -2,6 +2,7 @@ from vocabularies import VocabType
 from config import Config
 from interactive_predict import InteractivePredictor
 from model_base import Code2VecModelBase
+from pathlib import Path
 
 
 def load_model_dynamically(config: Config) -> Code2VecModelBase:
@@ -19,20 +20,7 @@ if __name__ == '__main__':
     model = load_model_dynamically(config)
     config.log('Done creating code2vec model')
 
-    if config.is_training:
-        model.train()
-    if config.SAVE_W2V is not None:
-        model.save_word2vec_format(config.SAVE_W2V, VocabType.Token)
-        config.log('Origin word vectors saved in word2vec text format in: %s' % config.SAVE_W2V)
-    if config.SAVE_T2V is not None:
-        model.save_word2vec_format(config.SAVE_T2V, VocabType.Target)
-        config.log('Target word vectors saved in word2vec text format in: %s' % config.SAVE_T2V)
-    if (config.is_testing and not config.is_training) or config.RELEASE:
-        eval_results = model.evaluate()
-        if eval_results is not None:
-            config.log(
-                str(eval_results).replace('topk', 'top{}'.format(config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION)))
-    if config.PREDICT:
-        predictor = InteractivePredictor(config, model)
-        predictor.predict()
+    predictor = InteractivePredictor(config, model)
+    folder = Path('dataset')
+    predictor.predict(folder)
     model.close_session()
